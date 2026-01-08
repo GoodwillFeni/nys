@@ -25,5 +25,5 @@ npm-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .env.testing
-.env.
+.env
 laravel.log
