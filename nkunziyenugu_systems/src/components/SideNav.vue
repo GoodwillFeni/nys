@@ -2,7 +2,8 @@
   <aside class="sidebar">
     <nav>
       <RouterLink to="/" v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin">Main Dashboard</RouterLink>
-      <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/UserList">User List</RouterLink>
+      <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AccountList">Accounts</RouterLink>
+      <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/UserList">Users</RouterLink>
       <LogOut />
     </nav>
   </aside>

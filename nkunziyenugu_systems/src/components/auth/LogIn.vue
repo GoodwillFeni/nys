@@ -81,8 +81,6 @@ export default {
           const res = await api.post('/login', this.form)
 
           if (res.data.status === 'success') {
-              // localStorage.setItem('token', res.data.token)
-              // localStorage.setItem('user', JSON.stringify(res.data.user))
              this.$store.dispatch('login', {
                   user: res.data.user,
                   token: res.data.token,

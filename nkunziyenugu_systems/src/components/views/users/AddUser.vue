@@ -119,27 +119,53 @@ export default {
         const response = await api.get("/accounts/available", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        this.accounts = response.data.accounts;
-        console.log("Available accounts:", this.accounts);
+
+        if (response.data && response.data.accounts) {
+          this.accounts = response.data.accounts;
+        } else {
+          this.accounts = [];
+        }
       } catch (error) {
-        console.error("Error fetching accounts:", error);
+        toast.error(error.response?.data?.message || "Failed to load accounts.");
+        this.accounts = [];
       }
     },
+
     async addUser() {
       this.loading = true;
-      this.error = null;
-      this.success = null;
       try {
-        const response = await api.post("/admin/add-user", this.form);
-        console.log("Add user response:", response.data); // Debug log
-        toast.success("User added successfully!");
-        this.success = "User account created successfully!";
-        // Reset form or redirect as needed
-        this.form = { name: "", surname: "", email: "", phone: "", password: "", role: "" };
+        const payload = {
+          name: this.form.name,
+          surname: this.form.surname,
+          email: this.form.email,
+          phone: this.form.phone,
+          password: this.form.password,
+          accounts: [
+            {
+              id: this.selectedAccount,
+              role: this.form.role
+            }
+          ]
+        };
+        const response = await api.post("/addUser", payload);
+        toast.success(response.data.message);
+        // Reset
+        this.form = {
+          name: "",
+          surname: "",
+          email: "",
+          phone: "",
+          password: "",
+          role: ""
+        };
+        this.selectedAccount = null;
+
       } catch (error) {
-        this.error =
-          error.response && error.response.data ? error.response.data.message : "An error occurred while adding the user.";
-        toast.error(this.error);
+        const msg =
+          error.response?.data?.message ||
+          "An error occurred while adding the user.";
+
+        toast.error(msg);
       } finally {
         this.loading = false;
       }

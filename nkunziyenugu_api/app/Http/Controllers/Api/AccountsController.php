@@ -11,28 +11,28 @@ class AccountsController extends Controller
     {
         $user = $request->user();
 
-        // Load accounts with pivot role
-        $accounts = $user->accounts()->withPivot('role')->get();
-        // If user has any account where role = Super_admin, show all accounts
-        $isSuperAdmin = $accounts->contains(function ($account) {
-            return $account->pivot->role === 'SuperAdmin';
-        });
-
-        if ($isSuperAdmin) {
-            $allAccounts = Account::select('id', 'name')->get();
+        // Check if the user is super admin
+        if ($user->is_super_admin == 1) {
+            // Return all accounts
+            $allAccounts = Account::where('deleted_flag', 0)
+                                  ->select('id', 'name', 'type', 'created_at', 'updated_at')
+                                  ->get();
             return response()->json(['accounts' => $allAccounts]);
         }
 
-        // Otherwise, only show linked accounts
-        $linkedAccounts = $accounts->map(function ($account) {
+        // Otherwise, return only linked accounts
+        $linkedAccounts = $user->accounts()->get(); // Load linked accounts via pivot
+        $accounts = $linkedAccounts->map(function ($account) {
             return [
                 'id' => $account->id,
                 'name' => $account->name,
+                'type' => $account->type,
                 'role' => $account->pivot->role,
+                'created_at' => $account->pivot->created_at,
+                'updated_at' => $account->pivot->updated_at
             ];
         });
 
-        return response()->json(['accounts' => $linkedAccounts]);
+        return response()->json(['accounts' => $accounts]);
     }
 }
-

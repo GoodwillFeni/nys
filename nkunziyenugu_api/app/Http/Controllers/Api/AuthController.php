@@ -100,6 +100,8 @@ class AuthController extends Controller
                     'name'    => $user->name,
                     'surname' => $user->surname,
                     'email'   => $user->email,
+                    'is_super_admin' => $user->is_super_admin,
+                    'is_impersonating' => (bool) $user->is_super_admin, // ✅ true if 1, false if 0
                 ],
                 'accounts' => $accounts
             ]);

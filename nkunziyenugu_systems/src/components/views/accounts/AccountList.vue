@@ -1,8 +1,8 @@
 <template>
   <div class="p-6">
     <div class="mb-4 flex justify-end">
-      <button @click="$router.push('/AddUser')" class="button-info">
-        Add New User
+      <button @click="$router.push('/AddAccount')" class="button-info">
+        Add Account
       </button>
     </div>
 
@@ -12,11 +12,7 @@
         <tr>
           <th>#</th>
           <th>Name</th>
-          <th>Surname</th>
-          <th>Email</th>
-          <th>Phone</th>
-          <th>Account</th>
-          <th>Role</th>
+          <th>Type</th>
           <th>Created At</th>
           <th>Updated At</th>
           <th>Action</th>
@@ -24,29 +20,25 @@
       </thead>
 
       <tbody>
-        <tr v-for="user in users" :key="user.id">
-          <td>{{ (users.indexOf(user) + 1) }}</td>
-          <td>{{ user.name }}</td>
-          <td>{{ user.surname }}</td>
-          <td>{{ user.email }}</td>
-          <td>{{ user.phone }}</td>
-          <td>{{ user.account_name }}</td>
-          <td>{{ user.account_role }}</td>
-          <td>{{ formatDate(user.user_created_at) }}</td>
-          <td>{{ formatDate(user.user_updated_at) }}</td>
+        <tr v-for="account in accounts" :key="account.id">
+          <td>{{ (accounts.indexOf(account) + 1) }}</td>
+          <td>{{ account.name }}</td>
+          <td>{{ account.type }}</td>
+          <td>{{ formatDate(account.created_at) }}</td>
+          <td>{{ formatDate(account.updated_at) }}</td>
           <td>
-            <button @click="editUser(user)" class="button-info">
+            <button @click="editAccount(account)" class="button-info">
               <i class="bi bi-pencil-square"></i>
             </button>
-            <button @click="deleteUser(user)" class="button-danger" v-if="isImpersonating === true">
+            <button @click="deleteAccount(account)" class="button-danger" v-if="isImpersonating === true">
               <i class="bi bi-trash"></i>
             </button>
           </td>
         </tr>
 
-        <tr v-if="users.length === 0">
+        <tr v-if="accounts.length === 0">
           <td colspan="9" class="text-center py-4">
-            No users found.
+            No accounts found.
           </td>
         </tr>
       </tbody>
@@ -63,12 +55,12 @@ export default {
   name: 'UserList',
   data() {
     return {
-      users: [],
+      accounts: [],
     }
   },
 
   mounted() {
-    this.getUsers();
+    this.getAccounts();
   },
 
   computed: {
@@ -101,42 +93,46 @@ export default {
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     },
 
-    editUser(user) {
+    editAccount(account) {
       this.$router.push({
-        path: `/EditUser/${user.user_id}`,
+        path: `/EditAccount/${account.id}`,
       })
     },
 
-    getUsers() {
-      const accountDetails = JSON.parse(localStorage.getItem("accounts") || "[]"); // Retrieve account details from localStorage
-      const activeAccountId = accountDetails.length > 0  ? accountDetails[0].pivot.account_id : null; // Get the active account ID
-      // Use the active account ID in your API call
-      api.get('/users', {
-          headers: { "X-Account-ID": activeAccountId },
-        })
-        .then(response => {
-            this.users = response.data.data;
-        })
-        .catch(error => {
-            console.error('Error fetching users:', error);
+    async getAccounts() {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await api.get("/accounts/available", {
+          headers: { Authorization: `Bearer ${token}` },
         });
 
+        if (response.data && response.data.accounts) {
+          this.accounts = response.data.accounts;
+
+          console.log("Accounts loaded:", this.accounts);// Debug log
+        } else {
+          this.accounts = [];
+        }
+      } catch (error) {
+        toast.error(error.response?.data?.message || "Failed to load accounts.");
+        this.accounts = [];
+      }
     },
 
-    async deleteUser(user) {
-      let confirmation = confirm("Are you sure you want to delete this user?");
+    async deleteAccount(account) {
+      let confirmation = confirm("Are you sure you want to delete this account?");
       if (!confirmation) {
         return;
       }
       try {
         const token = localStorage.getItem("token");
-        const response = await api.delete(`/users/${user.user_id}`, {
+        const response = await api.delete(`/accounts/${account.id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         toast.success(response.data.message);
-        this.getUsers(); // reload users list
+        this.getAccounts(); // reload accounts list
       } catch (error) {
-        toast.error(error.response?.data?.message || "Failed to delete user.");
+        toast.error(error.response?.data?.message || "Failed to delete account.");
       }
     }
 
