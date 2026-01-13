@@ -63,6 +63,16 @@ export default {
     this.getAccounts();
   },
 
+  watch: {
+    // Watch for active account changes in Vuex store
+    '$store.state.auth.activeAccount': {
+      handler() {
+        this.getAccounts();
+      },
+      deep: true
+    }
+  },
+
   computed: {
     currentUser() {
       return this.$store.state.auth.user

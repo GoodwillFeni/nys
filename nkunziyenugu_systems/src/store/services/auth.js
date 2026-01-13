@@ -42,6 +42,10 @@ export default {
 
     logout({ commit }) {
       commit('LOGOUT')
+    },
+
+    switchAccount({ commit }, account) {
+      commit('SET_ACTIVE_ACCOUNT', account)
     }
   },
 

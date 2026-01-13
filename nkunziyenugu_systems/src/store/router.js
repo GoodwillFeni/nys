@@ -46,6 +46,12 @@ const routes = [
         props: true,
         meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
     },
+    {
+        path: '/AuditLogs',
+        name: 'AuditLogs',
+        component: () => import('../components/views/audit/AuditLogList.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+    },
     
     // End Protected Routes
 

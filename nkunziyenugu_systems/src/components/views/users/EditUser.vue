@@ -73,7 +73,7 @@
             </div>
             <div class="col-2">
                 <button @click="goBack()" type="button" class="button-warning">
-                Go Back
+                Back
                 </button>
             </div>
           </div>

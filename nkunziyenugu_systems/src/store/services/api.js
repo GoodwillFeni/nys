@@ -8,12 +8,19 @@ const api = axios.create({
   }
 });
 
-// Attach token
+// Attach token and active account ID
 api.interceptors.request.use(config => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // Attach active account ID if available
+  const activeAccount = JSON.parse(localStorage.getItem("activeAccount") || "null");
+  if (activeAccount && activeAccount.id) {
+    config.headers["X-Account-ID"] = activeAccount.id;
+  }
+  
   return config;
 });
 

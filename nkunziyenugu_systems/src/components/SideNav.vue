@@ -1,9 +1,11 @@
 <template>
   <aside class="sidebar">
+    <AccountSelector v-if="isAuthenticated" />
     <nav>
       <RouterLink to="/" v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin">Main Dashboard</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AccountList">Accounts</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/UserList">Users</RouterLink>
+      <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AuditLogs">Audit Logs</RouterLink>
       <LogOut />
     </nav>
   </aside>
@@ -11,11 +13,14 @@
 
 <script>
 import LogOut from '../components/auth/LogOut.vue';
+import AccountSelector from './AccountSelector.vue';
+
 export default {
   name: 'SideNav',
 
   components: {
-    LogOut
+    LogOut,
+    AccountSelector
   },
 
   computed: {

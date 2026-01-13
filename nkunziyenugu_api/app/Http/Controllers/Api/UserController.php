@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\Account;
+use App\Services\AuditLogService;
 
 class UserController extends Controller
 {
@@ -59,6 +60,9 @@ class UserController extends Controller
             }
 
             DB::commit();
+
+            // Log the action
+            AuditLogService::logCreate($user, $request, "Created user: {$user->name} {$user->surname}");
 
             return response()->json([
                 'status' => 'success',
@@ -206,6 +210,9 @@ public function updateUser(Request $request, $id)
 
     DB::beginTransaction();
     try {
+        // Store old values for audit log
+        $oldValues = $user->getAttributes();
+
         // Update basic info
         $user->update([
             'name' => $request->name,
@@ -230,6 +237,9 @@ public function updateUser(Request $request, $id)
         $user->accounts()->sync($syncData);
 
         DB::commit();
+
+        // Log the action
+        AuditLogService::logUpdate($user, $oldValues, $request, "Updated user: {$user->name} {$user->surname}");
 
         return response()->json([
             'status' => 'success',
@@ -267,6 +277,9 @@ public function deleteUser(Request $request, $id)
     }
 
     try {
+        // Log before deletion
+        AuditLogService::logDelete($user, $request, "Deleted user: {$user->name} {$user->surname}");
+
         $user->deleted_flag = 1;
         $user->save();
 

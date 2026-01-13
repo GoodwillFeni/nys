@@ -71,6 +71,16 @@ export default {
     this.getUsers();
   },
 
+  watch: {
+    // Watch for active account changes in Vuex store
+    '$store.state.auth.activeAccount': {
+      handler() {
+        this.getUsers();
+      },
+      deep: true
+    }
+  },
+
   computed: {
     currentUser() {
       return this.$store.state.auth.user
@@ -107,20 +117,16 @@ export default {
       })
     },
 
-    getUsers() {
-      const accountDetails = JSON.parse(localStorage.getItem("accounts") || "[]"); // Retrieve account details from localStorage
-      const activeAccountId = accountDetails.length > 0  ? accountDetails[0].pivot.account_id : null; // Get the active account ID
-      // Use the active account ID in your API call
-      api.get('/users', {
-          headers: { "X-Account-ID": activeAccountId },
-        })
-        .then(response => {
-            this.users = response.data.data;
-        })
-        .catch(error => {
-            console.error('Error fetching users:', error);
-        });
-
+    async getUsers() {
+      try {
+        // X-Account-ID is now automatically sent by API interceptor
+        const response = await api.get('/users');
+        this.users = response.data.data || [];
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        toast.error(error.response?.data?.message || "Failed to load users.");
+        this.users = [];
+      }
     },
 
     async deleteUser(user) {

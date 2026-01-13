@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\AccountsController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\ImpersonationController;
 
 Route::post('/register', [AuthController::class, 'register']); //Route for registering a new user
@@ -33,6 +34,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{id}', [UserController::class, 'getUserDetails']); // Get user details
     Route::put('/users/{id}', [UserController::class, 'updateUser']); // Update user details
     Route::delete('/users/{id}', [UserController::class, 'deleteUser']); // Delete user
+    
+    // Account CRUD operations
+    Route::post('/accounts', [AccountsController::class, 'createAccount']); // Create new account
+    Route::get('/accounts/{id}', [AccountsController::class, 'getAccountDetails']); // Get account details
+    Route::put('/accounts/{id}', [AccountsController::class, 'updateAccount']); // Update account
+    Route::delete('/accounts/{id}', [AccountsController::class, 'deleteAccount']); // Delete account
+    
+    // Audit Logs (admin/owner only)
+    Route::get('/audit-logs', [AuditLogController::class, 'getLogs']); // Get audit logs with filtering
+    Route::get('/audit-logs/statistics', [AuditLogController::class, 'getStatistics']); // Get audit log statistics
 });
 
 
