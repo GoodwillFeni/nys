@@ -66,11 +66,8 @@ export default {
           name: this.form.name,
           type: this.form.type
         };
-        
         const response = await api.post("/accounts", payload);
-        
         toast.success(response.data.message || "Account created successfully");
-        
         // Reset form
         this.form = {
           name: "",

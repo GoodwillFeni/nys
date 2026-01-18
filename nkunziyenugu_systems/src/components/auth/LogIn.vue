@@ -79,12 +79,14 @@ export default {
         this.loading = true
         try {
           const res = await api.post('/login', this.form)
+          console.log(res)
 
           if (res.data.status === 'success') {
              this.$store.dispatch('login', {
                   user: res.data.user,
                   token: res.data.token,
-                  accounts: res.data.accounts
+                  accounts: res.data.accounts,
+                  expires_at: res.data.expires_at
             })
             toast.success(
               'Welcome, ' + res.data.user.name + ' to NYS System!'
@@ -99,6 +101,7 @@ export default {
             toast.error(res.data.message)
           }
         } catch (err) {
+          console.error(err)
           toast.error(
             err.response?.data?.message || 'Login failed. Please try again.'
           )

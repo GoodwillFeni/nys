@@ -27,7 +27,7 @@ class UserController extends Controller
             'password' => 'required|min:6',
             'accounts' => 'required|array|min:1',
             'accounts.*.id' => 'required|exists:accounts,id',
-            'accounts.*.role' => 'required|in:owner,admin,viewer',
+            'accounts.*.role' => 'required|in:Owner,Admin,Viewer',
         ]);
 
         DB::beginTransaction();
@@ -205,7 +205,7 @@ public function updateUser(Request $request, $id)
         'password' => 'nullable|min:6',
         'accounts' => 'required|array|min:1',
         'accounts.*.id' => 'required|exists:accounts,id',
-        'accounts.*.role' => 'required|in:owner,admin,viewer,super_admin',
+        'accounts.*.role' => 'required|in:Owner,Admin,Viewer,Super_Admin',
     ]);
 
     DB::beginTransaction();

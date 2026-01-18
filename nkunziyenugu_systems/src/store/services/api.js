@@ -14,15 +14,20 @@ api.interceptors.request.use(config => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  
-  // Attach active account ID if available
+
   const activeAccount = JSON.parse(localStorage.getItem("activeAccount") || "null");
-  if (activeAccount && activeAccount.id) {
+
+  // Only attach account header if it exists
+  console.log("Active Account:", activeAccount);
+  if (activeAccount?.id) {
     config.headers["X-Account-ID"] = activeAccount.id;
+  } else {
+    delete config.headers["X-Account-ID"];
   }
-  
+
   return config;
 });
+
 
 // Handle 401 globally (EXCEPT auth routes)
 api.interceptors.response.use(
@@ -40,14 +45,26 @@ api.interceptors.response.use(
 
     const isAuthRoute = authRoutes.some(route => url.includes(route));
 
-    if (status === 401 && !isAuthRoute) { // Unauthorized
-      localStorage.removeItem("token"); 
+    // Only logout on REAL authentication failure
+    if (status === 401 && !isAuthRoute) {
+      localStorage.removeItem("token");
       localStorage.removeItem("user");
+      localStorage.removeItem("accounts");
+      localStorage.removeItem("activeAccount");
+      localStorage.removeItem("expires_at");
+
       window.location.href = "/LogIn";
+      return;
+    }
+
+    //  Permission denied → stay logged in
+    if (status === 403) {
+      console.warn("Permission denied:", error.response?.data?.message);
     }
 
     return Promise.reject(error);
   }
 );
+
 
 export default api;

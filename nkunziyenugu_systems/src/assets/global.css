@@ -62,3 +62,29 @@
     color: #b9b9b9;
 }
 /* End Global button styling */
+
+.text-muted {
+    font-size: 12px;
+    color: #6c757d;
+    font-family: cursive;
+}
+
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: linear-gradient(135deg, #27253f, #605a6d);
+  color: #fff;
+}
+
+table th,
+table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+ th {
+  background: rgba(0, 0, 0, 0.2);
+  font-weight: 600;
+}

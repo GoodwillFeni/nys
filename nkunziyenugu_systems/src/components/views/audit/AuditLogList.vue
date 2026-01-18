@@ -68,8 +68,8 @@
             <td>{{ log.description }}</td>
             <td>{{ log.ip_address || 'N/A' }}</td>
             <td>
-              <button @click="showDetails(log)" class="button-info btn-sm">
-                <i class="bi bi-eye"></i> View
+              <button @click="showDetails(log)" class="button-info">
+                <i class="bi bi-eye"></i>
               </button>
             </td>
           </tr>

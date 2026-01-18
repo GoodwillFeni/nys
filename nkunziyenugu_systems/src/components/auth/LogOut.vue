@@ -1,11 +1,11 @@
 <template>
   <li @click="logout">
-   <a>Log Out</a> 
+    <a>Log Out</a>
   </li>
 </template>
 
 <script>
-import api from '../../store/services/api';
+import api from '@/store/services/api'
 
 export default {
   methods: {
@@ -13,13 +13,12 @@ export default {
       try {
         await api.post('/logout')
       } catch (e) {
-        console.error('Logout error:', e)
+        console.warn('Backend logout failed, forcing client logout')
       }
 
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      this.$router.push('/LogIn')
-        location.reload()
+      this.$store.dispatch('logout')
+      location.reload()
+      this.$router.replace('/LogIn')
     }
   }
 }

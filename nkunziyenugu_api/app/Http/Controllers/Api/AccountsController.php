@@ -64,7 +64,7 @@ class AccountsController extends Controller
             AccountUser::create([
                 'account_id' => $account->id,
                 'user_id' => $authUser->id,
-                'role' => 'owner',
+                'role' => 'Owner',
             ]);
 
             DB::commit();

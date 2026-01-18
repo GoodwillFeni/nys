@@ -2,49 +2,32 @@
   <div class="login-wrapper">
     <div class="login-container">
       <div class="login-right">
-        <h2>Add User</h2>
-
-        <form @submit.prevent="addUser">
+        <h2>Add new Device</h2>
+        <form @submit.prevent="addDevice">
           <div class="input-group">
             <input 
               type="text" 
               v-model="form.name" 
-              placeholder="Name" 
+              placeholder="Device Name" 
               required />
           </div>
 
           <div class="input-group">
             <input 
               type="text" 
-              v-model="form.surname" 
-              placeholder="Surname" 
+              v-model="form.device_id" 
+              placeholder="Device ID" 
               required />
           </div>
 
           <div class="input-group">
             <input 
-              type="email"
-              v-model="form.email"
-              placeholder="Email address"
+              type="text"
+              v-model="form.assert_details"
+              placeholder="Assert Details (Serial Number, Model, etc)"
               required
             />
-          </div>
-
-          <div class="input-group">
-            <input
-              type="tel"
-              v-model="form.phone"
-              placeholder="Phone number"
-            />
-          </div>
-
-          <div class="input-group">
-            <input
-              type="password"
-              v-model="form.password"
-              placeholder="Password"
-              required
-            />
+            <span class="text-muted">Optional: Provide additional details about the device. </span>
           </div>
 
           <div class="input-group">
@@ -56,20 +39,10 @@
             </select>
           </div>
 
-          <div class="input-group">
-            <select v-model="form.role" required>
-              <option value="" disabled>Select Role</option>
-              <option value="SuperAdmin">SuperAdmin</option>
-              <option value="Owner">Owner</option>
-              <option value="Admin">Admin</option>
-              <option value="Viewer">Viewer</option>
-            </select>
-          </div>
-
           <div class="row">
             <div class="col-2" >
                 <button type="submit" :disabled="loading" class="button-info">
-                    {{ loading ? 'Adding user...' : 'Add User' }}
+                    {{ loading ? 'Adding device...' : 'Add Device' }}
                 </button>
             </div>
             <div class="col-2">
@@ -98,11 +71,10 @@ export default {
       accounts: [],
       selectedAccount: null,
       form: {
-        name: "",
-        surname: "",
-        email: "",
-        phone: "",
-        password: "",
+        device_name: "",
+        device_id: "",
+        assert_details: "",
+        account_id: "",
         role: ""
       }
     };
@@ -131,23 +103,21 @@ export default {
       }
     },
 
-    async addUser() {
+    async addDevice() {
       this.loading = true;
       try {
         const payload = {
-          name: this.form.name,
-          surname: this.form.surname,
-          email: this.form.email,
-          phone: this.form.phone,
-          password: this.form.password,
-          accounts: [
-            {
-              id: this.selectedAccount,
-              role: this.form.role
-            }
-          ]
+            device_name: this.form.device_name,
+            device_id: this.form.device_id,
+            assert_details: this.form.assert_details,
+            accounts: [
+                {
+                    id: this.selectedAccount,
+                    role: this.form.role
+                }
+            ]
         };
-        const response = await api.post("/users", payload);
+        const response = await api.post("/addDevice", payload);
         toast.success(response.data.message);
         // Reset
         this.form = {

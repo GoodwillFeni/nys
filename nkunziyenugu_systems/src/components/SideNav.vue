@@ -3,6 +3,7 @@
     <AccountSelector v-if="isAuthenticated" />
     <nav>
       <RouterLink to="/" v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin">Main Dashboard</RouterLink>
+      <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/DeviceList">Devices</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AccountList">Accounts</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/UserList">Users</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AuditLogs">Audit Logs</RouterLink>

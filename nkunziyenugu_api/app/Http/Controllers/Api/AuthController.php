@@ -40,14 +40,14 @@ class AuthController extends Controller
             // 2️⃣ Create account automatically
             $account = Account::create([
                 'name' => $request->name . "'s Account",
-                'type' => 'home',
+                'type' => 'Home',
             ]);
 
             // 3️⃣ Link user to account as owner
             AccountUser::create([
                 'account_id' => $account->id,
                 'user_id'    => $user->id,
-                'role'       => 'owner',
+                'role'       => 'Owner',
             ]);
 
             DB::commit();
@@ -88,13 +88,19 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            $token = $user->createToken('api-token')->plainTextToken;
-
+           // $token = $user->createToken('api-token')->plainTextToken;
+           $token = $user->tokens()->create([
+                'name' => 'api-token',
+                'token' => $user->createToken('api-token')->plainTextToken,
+                'abilities' => ['*'],
+                'expires_at' => now()->addHours(12), // Token expires in 12 hours
+            ]);
             $accounts = $user->accounts()->withPivot('role')->get();
 
             return response()->json([
                 'status' => 'success',
-                'token'  => $token,
+                'token' => $token->token,
+                'expires_at' => $token->expires_at,
                 'user'   => [
                     'id'      => $user->id,
                     'name'    => $user->name,

@@ -5,7 +5,8 @@ export default {
     user: JSON.parse(localStorage.getItem('user')),
     token: localStorage.getItem('token'),
     accounts: JSON.parse(localStorage.getItem('accounts')),
-    activeAccount: JSON.parse(localStorage.getItem('activeAccount'))
+    activeAccount: JSON.parse(localStorage.getItem('activeAccount')),
+    expires_at: JSON.parse(localStorage.getItem('expires_at'))
   },
 
   mutations: {
@@ -14,11 +15,13 @@ export default {
       state.token = payload.token
       state.accounts = payload.accounts
       state.activeAccount = payload.accounts?.[0] || null
+      state.expires_at = payload.expires_at
 
       localStorage.setItem('user', JSON.stringify(payload.user))
       localStorage.setItem('token', payload.token)
       localStorage.setItem('accounts', JSON.stringify(payload.accounts))
       localStorage.setItem('activeAccount', JSON.stringify(state.activeAccount))
+      localStorage.setItem('expires_at', JSON.stringify(payload.expires_at))
     },
 
     SET_ACTIVE_ACCOUNT(state, account) {
@@ -26,12 +29,18 @@ export default {
       localStorage.setItem('activeAccount', JSON.stringify(account))
     },
 
-    LOGOUT(state) {
+    LOGOUT(state) { // Clear all authentication data
       state.user = null
       state.token = null
       state.accounts = null
-      state.activeAccount = null
-      localStorage.clear()
+      state.activeAccount = null,
+      state.expires_at = null
+
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('accounts')
+      localStorage.removeItem('activeAccount')
+      localStorage.removeItem('expires_at')
     }
   },
 

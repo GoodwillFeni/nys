@@ -6,51 +6,70 @@ const routes = [
         path: '/',
         name: 'MainDashboard',
         component: () => import('../components/views/MainDashboard.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin', 'user'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
     },
     {
         path: '/UserList',
         name: 'UserList',
         component: () => import('../components/views/users/UserList.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/AddUser',
         name: 'AddUser',
         component: () => import('../components/views/users/AddUser.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/EditUser/:id',
         name: 'EditUser',
         component: () => import('../components/views/users/EditUser.vue'),
         props: true,
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/AccountList',
         name: 'Accounts',
         component: () => import('../components/views/accounts/AccountList.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/AddAccount',
         name: 'AddAccount',
         component: () => import('../components/views/accounts/AddAccount.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/EditAccount/:id',
         name: 'EditAccount',
         component: () => import('../components/views/accounts/EditAccount.vue'),
         props: true,
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/AuditLogs',
         name: 'AuditLogs',
         component: () => import('../components/views/audit/AuditLogList.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'owner', 'superAdmin'] }
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/DeviceList',
+        name: 'DevicesList',
+        component: () => import('../components/views/devics/DeviceList.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
+        path: '/AddDevice',
+        name: 'AddDevice',
+        component: () => import('../components/views/devics/AddDevice.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/DeviceLogs/:id',
+        name: 'DeviceLogs',
+        component: () => import('../components/views/devics/DeviceLogs.vue'),
+        props: true,
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     
     // End Protected Routes
