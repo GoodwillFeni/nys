@@ -3,7 +3,6 @@
     <div class="login-container">
       <div class="login-right">
         <h2>Add User</h2>
-
         <form @submit.prevent="addUser">
           <div class="input-group">
             <input 
@@ -59,7 +58,6 @@
           <div class="input-group">
             <select v-model="form.role" required>
               <option value="" disabled>Select Role</option>
-              <option value="SuperAdmin">SuperAdmin</option>
               <option value="Owner">Owner</option>
               <option value="Admin">Admin</option>
               <option value="Viewer">Viewer</option>

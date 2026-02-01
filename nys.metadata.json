@@ -1,0 +1,191 @@
+{
+  "project": {
+    "name": "NYS - Nkunziyenungu Systems",
+    "type": "Full-stack web application",
+    "description": "Multi-tenant Smart Home & Business Management Platform with user/account management, RBAC, audit logs, and device (IoT) management.",
+    "repository_root": "NYS"
+  },
+  "structure": {
+    "backend": {
+      "path": "nkunziyenugu_api",
+      "framework": "Laravel",
+      "language": "PHP",
+      "php_version": ">= 8.2",
+      "auth": "Laravel Sanctum (Bearer tokens)",
+      "api_base_url_dev": "http://127.0.0.1:8000/api"
+    },
+    "frontend": {
+      "path": "nkunziyenugu_systems",
+      "framework": "Vue.js",
+      "language": "JavaScript",
+      "vue_version": "3",
+      "router": "vue-router",
+      "state": "vuex",
+      "ui": [
+        "Bootstrap 5",
+        "Bootstrap Icons"
+      ],
+      "dev_url": "http://localhost:8080"
+    },
+    "documentation": {
+      "path": "NYS_Documentation",
+      "files": [
+        "Nkunziyenungu Smart Home.docx",
+        "Nkunziyenungu Smart Home DB.docx",
+        "Nkunziyenungu Smart Home ESP.docx"
+      ]
+    }
+  },
+  "setup": {
+    "prerequisites": {
+      "backend": [
+        "PHP 8.2+",
+        "Composer",
+        "MySQL (recommended/expected)",
+        "Node.js + npm (for Laravel Vite assets if used)"
+      ],
+      "frontend": [
+        "Node.js (v16+ recommended)",
+        "npm"
+      ]
+    },
+    "backend_env": {
+      "notes": [
+        "This repo does not include a tracked .env.example in nkunziyenugu_api.",
+        "Laravel config supports MySQL, but defaults to sqlite unless DB_CONNECTION is set.",
+        "For MySQL: set DB_CONNECTION=mysql and configure DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD in nkunziyenugu_api/.env."
+      ]
+    },
+    "commands": {
+      "frontend_dev": [
+        "cd nkunziyenugu_systems",
+        "npm install",
+        "npm run serve"
+      ],
+      "backend_dev": [
+        "cd nkunziyenugu_api",
+        "composer install",
+        "php artisan key:generate",
+        "php artisan migrate",
+        "php artisan serve"
+      ]
+    },
+    "ports": {
+      "backend": 8000,
+      "frontend": 8080
+    }
+  },
+  "authentication": {
+    "method": "Bearer token",
+    "provider": "Laravel Sanctum",
+    "token_expiration_hours": 12,
+    "frontend_storage": [
+      "localStorage.token",
+      "localStorage.user",
+      "localStorage.accounts",
+      "localStorage.activeAccount",
+      "localStorage.expires_at"
+    ],
+    "multi_tenant": {
+      "active_account_header": "X-Account-ID",
+      "description": "Frontend attaches the active account ID on requests; backend uses it to scope data for non-super-admin users."
+    }
+  },
+  "modules": {
+    "implemented": [
+      {
+        "name": "Auth",
+        "backend_routes": [
+          "POST /register",
+          "POST /login",
+          "POST /logout",
+          "POST /forgot-password",
+          "POST /reset-password"
+        ],
+        "frontend_routes": [
+          "/LogIn",
+          "/SignUp",
+          "/ForgotPassword",
+          "/ResetPassword"
+        ]
+      },
+      {
+        "name": "Accounts (tenants)",
+        "backend_routes": [
+          "GET /accounts/available",
+          "POST /accounts",
+          "GET /accounts/{id}",
+          "PUT /accounts/{id}",
+          "DELETE /accounts/{id}"
+        ],
+        "frontend_routes": [
+          "/AccountList",
+          "/AddAccount",
+          "/EditAccount/:id"
+        ]
+      },
+      {
+        "name": "Users",
+        "backend_routes": [
+          "GET /users",
+          "POST /users",
+          "GET /users/{id}",
+          "PUT /users/{id}",
+          "DELETE /users/{id}"
+        ],
+        "frontend_routes": [
+          "/UserList",
+          "/AddUser",
+          "/EditUser/:id"
+        ]
+      },
+      {
+        "name": "Audit Logs",
+        "backend_routes": [
+          "GET /audit-logs",
+          "GET /audit-logs/statistics"
+        ],
+        "frontend_routes": [
+          "/AuditLogs"
+        ]
+      },
+      {
+        "name": "Devices (IoT)",
+        "backend_routes": [
+          "GET /devices",
+          "POST /devices",
+          "GET /devices/{device}",
+          "POST /devices/ingest (middleware: device_auth)",
+          "POST /device/message (header: X-DEVICE-KEY)"
+        ],
+        "frontend_routes": [
+          "/DeviceList",
+          "/AddDevice",
+          "/DeviceLogs/:id"
+        ]
+      },
+      {
+        "name": "Super Admin Impersonation",
+        "backend_routes": [
+          "POST /impersonate/{userId}",
+          "POST /impersonate/stop"
+        ]
+      }
+    ],
+    "planned_or_not_found_in_code": [
+      "Financial reporting",
+      "Livestock module",
+      "Stock/inventory module",
+      "Extended permissions matrix per module",
+      "Expanded IoT features as described in NYS_Documentation"
+    ]
+  },
+  "notes": {
+    "frontend_api_base_url": "Frontend axios baseURL is hard-coded in nkunziyenugu_systems/src/store/services/api.js: http://127.0.0.1:8000/api",
+    "role_based_access": "Frontend uses route meta roles and localStorage.activeAccount.pivot.role; backend uses is_super_admin plus account_users.role.",
+    "security": {
+      "cors": "Backend CORS config allows all origins (allowed_origins: ['*']).",
+      "device_auth": "Route exists for /devices/ingest with device_auth middleware; middleware implementation should be verified if deploying."
+    }
+  }
+}

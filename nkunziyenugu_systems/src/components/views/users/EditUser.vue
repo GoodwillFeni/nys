@@ -58,10 +58,10 @@
           <div class="input-group">
             <select v-model="form.role" required>
               <option value="" disabled>Select Role</option>
-              <option value="super_admin">SuperAdmin</option>
-              <option value="owner">Owner</option>
-              <option value="admin">Admin</option>
-              <option value="viewer">Viewer</option>
+              <!-- <option value="SuperAdmin">SuperAdmin</option> -->
+              <option value="Owner">Owner</option>
+              <option value="Admin">Admin</option>
+              <option value="Viewer">Viewer</option>
             </select>
           </div>
 
@@ -173,6 +173,7 @@ export default {
         });
 
         toast.success(response.data.message);
+        this.$router.push("/UserList"); // Redirect to user list
 
       } catch (error) {
         const msg = error.response?.data?.message || "An error occurred while updating the user.";

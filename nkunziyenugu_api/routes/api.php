@@ -51,6 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/devices', [DeviceController::class, 'index']);
     Route::post('/devices', [DeviceController::class, 'store']);
+    Route::get('/devices/{device}/logs', [DeviceController::class, 'logs']);
     Route::get('/devices/{device}', [DeviceController::class, 'show']);
 });
 

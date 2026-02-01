@@ -7,32 +7,30 @@
           <div class="input-group">
             <input 
               type="text" 
-              v-model="form.name" 
-              placeholder="Device Name" 
+              v-model="form.device_asset_name" 
+              placeholder="Device / Assert name" 
               required />
           </div>
 
           <div class="input-group">
             <input 
               type="text" 
-              v-model="form.device_id" 
-              placeholder="Device ID" 
+              v-model="form.device_uid" 
+              placeholder="Device UID" 
               required />
           </div>
 
           <div class="input-group">
             <input 
-              type="text"
-              v-model="form.assert_details"
-              placeholder="Assert Details (Serial Number, Model, etc)"
-              required
-            />
-            <span class="text-muted">Optional: Provide additional details about the device. </span>
+              type="text" 
+              v-model="form.device_key" 
+              placeholder="Device Key" 
+              required />
           </div>
 
           <div class="input-group">
             <select v-model="selectedAccount" required>
-              <option value="" disabled>Select Account</option>
+              <option value="" disabled selected>Select Account </option>
               <option v-for="account in accounts" :key="account.id" :value="account.id">
                 {{ account.name }}
               </option>
@@ -63,7 +61,7 @@ import { useToast } from "vue-toastification";
 const toast = useToast();
 
 export default {
-  name: "AddUser",
+  name: "AddDevice",
 
   data() {
     return {
@@ -71,11 +69,10 @@ export default {
       accounts: [],
       selectedAccount: null,
       form: {
-        device_name: "",
-        device_id: "",
-        assert_details: "",
-        account_id: "",
-        role: ""
+        device_asset_name: "",
+        device_uid: "",
+        device_key: "",
+        has_alarm: false
       }
     };
   },
@@ -107,33 +104,33 @@ export default {
       this.loading = true;
       try {
         const payload = {
-            device_name: this.form.device_name,
-            device_id: this.form.device_id,
-            assert_details: this.form.assert_details,
-            accounts: [
-                {
-                    id: this.selectedAccount,
-                    role: this.form.role
-                }
-            ]
+          account_id: this.selectedAccount,
+          device_asset_name: this.form.device_asset_name,
+          device_uid: this.form.device_uid,
+          device_key: this.form.device_key,
+          has_alarm: this.form.has_alarm
         };
-        const response = await api.post("/addDevice", payload);
-        toast.success(response.data.message);
+
+        const response = await api.post("/devices", payload);
+        toast.success("Device added successfully.");
+
+        if (response?.data?.device_key) {
+          toast.info(`Device Key: ${response.data.device_key}`);
+        }
+
         // Reset
         this.form = {
-          name: "",
-          surname: "",
-          email: "",
-          phone: "",
-          password: "",
-          role: ""
+          device_asset_name: "",
+          device_uid: "",
+          device_key: "",
+          has_alarm: false
         };
         this.selectedAccount = null;
 
       } catch (error) {
         const msg =
           error.response?.data?.message ||
-          "An error occurred while adding the user.";
+          "An error occurred while adding the device.";
 
         toast.error(msg);
       } finally {

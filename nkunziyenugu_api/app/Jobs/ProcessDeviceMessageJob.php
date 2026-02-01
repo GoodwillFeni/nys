@@ -27,6 +27,9 @@ class ProcessDeviceMessageJob implements ShouldQueue
             'payload' => $this->payload,
             'lat' => $this->payload['gps']['lat'] ?? null,
             'lng' => $this->payload['gps']['lng'] ?? null,
+            'fix_quality' => $this->payload['gps']['fix_quality'] ?? null,
+            'satellites' => $this->payload['gps']['satellites'] ?? null,
+            'fix' => $this->payload['gps']['fix'] ?? null,
             'device_timestamp' => Carbon::createFromTimestamp(
                 $this->payload['timestamp']
             ),

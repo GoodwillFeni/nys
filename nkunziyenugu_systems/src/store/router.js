@@ -55,19 +55,19 @@ const routes = [
     {
         path: '/DeviceList',
         name: 'DevicesList',
-        component: () => import('../components/views/devics/DeviceList.vue'),
+        component: () => import('../components/views/devices/DeviceList.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
     },
     {
         path: '/AddDevice',
         name: 'AddDevice',
-        component: () => import('../components/views/devics/AddDevice.vue'),
+        component: () => import('../components/views/devices/AddDevice.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/DeviceLogs/:id',
         name: 'DeviceLogs',
-        component: () => import('../components/views/devics/DeviceLogs.vue'),
+        component: () => import('../components/views/devices/DeviceLogs.vue'),
         props: true,
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },

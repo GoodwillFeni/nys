@@ -8,9 +8,12 @@ class Device extends Model
     protected $fillable = [
         'name',
         'device_uid',
+        'device_secret',
         'account_id',
         'has_alarm',
         'last_seen_at',
+        'is_active',
+        'deleted_flag',
         'meta',
     ];
 

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class DeviceController extends Controller
 {
@@ -40,34 +40,107 @@ class DeviceController extends Controller
                     'id' => $device->id,
                     'name' => $device->name,
                     'device_uid' => $device->device_uid,
-                    'alarm_enabled' => $device->alarm_enabled,
+                    'has_alarm' => $device->has_alarm,
                     'last_seen_at' => $device->last_seen_at,
-                    'account' => [
+                    'account' => $device->account ? [
                         'id' => $device->account->id,
                         'name' => $device->account->name,
-                    ],
+                    ] : null,
+                    'account_name' => $device->account ? $device->account->name : null,
                     'created_at' => $device->created_at,
                     'updated_at' => $device->updated_at,
                 ];
             })
         ]);
     }
+
+    public function logs(Request $request, Device $device)
+    {
+        $user = $request->user();
+
+        if (!$user->is_super_admin) {
+            $accountIds = $user->accounts()->pluck('accounts.id');
+            if (!$accountIds->contains($device->account_id)) {
+                return response()->json([
+                    'message' => 'Not allowed to view logs for this device'
+                ], 403);
+            }
+        }
+
+        $query = $device->messages()->orderBy('created_at', 'desc');
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+
+        if ($request->filled('from')) {
+            $query->where('created_at', '>=', Carbon::parse($request->from));
+        }
+
+        if ($request->filled('to')) {
+            $query->where('created_at', '<=', Carbon::parse($request->to));
+        }
+
+        $perPage = (int) $request->get('per_page', 20);
+        if ($perPage <= 0) {
+            $perPage = 20;
+        }
+        if ($perPage > 200) {
+            $perPage = 200;
+        }
+
+        $paginator = $query->paginate($perPage);
+        $items = collect($paginator->items())->map(function ($msg) use ($device) {
+            return [
+                'id' => $msg->id,
+                'type' => $msg->type,
+                'payload' => $msg->payload,
+                'lat' => $msg->lat,
+                'lng' => $msg->lng,
+                'device_timestamp' => $msg->device_timestamp,
+                'created_at' => $msg->created_at,
+                'device' => [
+                    'id' => $device->id,
+                    'name' => $device->name,
+                    'device_uid' => $device->device_uid,
+                ],
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'items' => $items,
+                'pagination' => [
+                    'page' => $paginator->currentPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'last_page' => $paginator->lastPage(),
+                ],
+            ],
+        ]);
+    }
+    
     public function store(Request $request)
     {
         $user = $request->user();
 
+        $name = $request->input('device_asset_name', $request->input('name'));
+
         $request->validate([
             'account_id' => 'required|exists:accounts,id',
-            'name'       => 'required|string|max:150',
-            'device_id'  => 'required|string|max:100|unique:devices,device_id',
-            'alarms_enabled' => 'boolean',
+            'name'       => 'required_without:device_asset_name|string|max:150',
+            'device_asset_name' => 'required_without:name|string|max:150',
+            'device_uid'  => 'required|string|max:100|unique:devices,device_uid',
+            'device_key'  => 'required|string|max:255',
+            'has_alarm' => 'boolean',
         ]);
 
         // 🔐 Authorization
         if (!$user->is_super_admin) {
             $allowed = $user->accounts()
                 ->where('accounts.id', $request->account_id)
-                ->whereIn('account_users.role', ['owner', 'admin'])
+                ->whereIn('account_users.role', ['Owner', 'Admin', 'owner', 'admin'])
                 ->exists();
 
             if (!$allowed) {
@@ -77,17 +150,19 @@ class DeviceController extends Controller
             }
         }
 
+        $plainSecret = $request->device_key;
+
         $device = Device::create([
             'account_id'      => $request->account_id,
-            'name'            => $request->name,
-            'device_id'       => $request->device_id,
-            'api_key'         => hash('sha256', Str::random(60)),
-            'alarms_enabled'  => $request->alarms_enabled ?? false,
+            'name'            => $name,
+            'device_uid'      => $request->device_uid,
+            'device_secret'   => $plainSecret,
+            'has_alarm'       => $request->has_alarm ?? false,
         ]);
 
         return response()->json([
             'status' => 'success',
-            'data'   => $device
+            'data'   => $device,
         ], 201);
     }
 

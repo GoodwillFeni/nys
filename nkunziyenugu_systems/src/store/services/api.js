@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8000/api",
+  baseURL: "http://192.168.101.175:8000/api",
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json"
@@ -18,13 +18,11 @@ api.interceptors.request.use(config => {
   const activeAccount = JSON.parse(localStorage.getItem("activeAccount") || "null");
 
   // Only attach account header if it exists
-  console.log("Active Account:", activeAccount);
   if (activeAccount?.id) {
     config.headers["X-Account-ID"] = activeAccount.id;
   } else {
     delete config.headers["X-Account-ID"];
   }
-
   return config;
 });
 
