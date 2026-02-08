@@ -3,10 +3,12 @@
 #include <stdlib.h>
  #include <string.h>
  #include <math.h>
+ #include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
  #include "freertos/event_groups.h"
+ #include "freertos/semphr.h"
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
@@ -24,6 +26,7 @@
  #include "esp_mac.h"
  #include "esp_http_client.h"
  #include "esp_http_server.h"
+ #include "esp_sntp.h"
  #include "cJSON.h"
  #include "mbedtls/md.h"
 
@@ -37,7 +40,8 @@
 #define TEST_OUTPUT_GPIO GPIO_NUM_2
 
 static const char *TAG = "NYS_ESP";
-#define NYS_API_URL "http://192.168.101.175:8000/api/device/message"
+#define NYS_API_URL "http://192.168.101.175:8000/api/device/message" //Home
+//#define NYS_API_URL "http://192.168.200.21:8000/api/device/message" //Work
 #define NYS_WIFI_AP_SSID_PREFIX "NYS_"
 #define NYS_WIFI_AP_PASS "Goodwill@123"
  
@@ -84,6 +88,37 @@ static bool s_reboot_scheduled;
 
 #define WIFI_CONNECTED_BIT BIT0
 
+#define NYS_QUEUE_NS "q"
+#define NYS_QUEUE_SIZE 100
+#define NYS_QUEUE_MAGIC 0x4E595331u
+
+#define NYS_TIME_NS "time"
+#define NYS_TIME_VALID_EPOCH_MIN 1700000000
+
+typedef struct {
+    uint32_t magic;
+    uint32_t seq;
+    int64_t ts_s;
+    int64_t queued_at_epoch_s;
+    int32_t lat_e6;
+    int32_t lon_e6;
+    int16_t fix_quality;
+    int16_t sats_used;
+    uint8_t has_coords;
+    uint8_t fix;
+    uint8_t last_known;
+    uint8_t sent;
+} nys_queue_rec_t;
+
+static SemaphoreHandle_t s_queue_mutex;
+static uint32_t s_queue_next_seq;
+static uint32_t s_queue_widx;
+
+static bool s_time_has_base;
+static int64_t s_time_base_epoch_s;
+static int64_t s_time_base_uptime_s;
+static bool s_sntp_started;
+
 #define NYS_AP_WINDOW_MS (60000)
 #define NYS_STA_MAX_RETRIES_BEFORE_AP (20)
 
@@ -97,6 +132,35 @@ static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t locat
 static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg);
 static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, bool has_fix);
 static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level);
+static esp_err_t http_queue_get(httpd_req_t *req);
+
+static void gps_sample_task(void *arg);
+static void queue_init(void);
+static void queue_push_sample(void);
+static void queue_drain_step(void);
+static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out);
+static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue_rec_t *rec);
+
+static void time_init(void);
+static int64_t time_uptime_s(void);
+static int64_t time_now_epoch_s(void);
+static void time_maybe_start_sntp(void);
+
+static void time_try_update_base_from_system(void);
+
+typedef struct {
+    uint32_t magic;
+    uint32_t seq;
+    int64_t ts_s;
+    int32_t lat_e6;
+    int32_t lon_e6;
+    int16_t fix_quality;
+    int16_t sats_used;
+    uint8_t has_coords;
+    uint8_t fix;
+    uint8_t last_known;
+    uint8_t sent;
+} nys_queue_rec_v1_t;
 
 static esp_err_t cfg_load(nys_cfg_t *out)
 {
@@ -240,6 +304,81 @@ static void cfg_ensure_identity(nys_cfg_t *cfg)
     ESP_LOGI(TAG, "Device KEY: %s", cfg->device_key);
 }
 
+static int64_t time_uptime_s(void)
+{
+    return esp_timer_get_time() / 1000000;
+}
+
+static void time_init(void)
+{
+    s_time_has_base = false;
+    s_time_base_epoch_s = 0;
+    s_time_base_uptime_s = 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NYS_TIME_NS, NVS_READONLY, &h) == ESP_OK) {
+        int64_t epoch = 0;
+        int64_t up = 0;
+        if (nvs_get_i64(h, "epoch", &epoch) == ESP_OK && nvs_get_i64(h, "uptime", &up) == ESP_OK) {
+            if (epoch >= NYS_TIME_VALID_EPOCH_MIN && up >= 0) {
+                s_time_has_base = true;
+                s_time_base_epoch_s = epoch;
+                s_time_base_uptime_s = up;
+            }
+        }
+        nvs_close(h);
+    }
+}
+
+static void time_try_update_base_from_system(void)
+{
+    time_t now = time(NULL);
+    if ((int64_t)now < NYS_TIME_VALID_EPOCH_MIN) {
+        return;
+    }
+
+    int64_t up_s = time_uptime_s();
+    s_time_has_base = true;
+    s_time_base_epoch_s = (int64_t)now;
+    s_time_base_uptime_s = up_s;
+
+    nvs_handle_t h;
+    if (nvs_open(NYS_TIME_NS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_i64(h, "epoch", s_time_base_epoch_s);
+        (void)nvs_set_i64(h, "uptime", s_time_base_uptime_s);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static int64_t time_now_epoch_s(void)
+{
+    if (!s_time_has_base) {
+        time_try_update_base_from_system();
+    }
+    if (!s_time_has_base) {
+        return 0;
+    }
+    int64_t up_s = time_uptime_s();
+    int64_t delta = up_s - s_time_base_uptime_s;
+    if (delta < 0) {
+        delta = 0;
+    }
+    return s_time_base_epoch_s + delta;
+}
+
+static void time_maybe_start_sntp(void)
+{
+    if (s_sntp_started) {
+        return;
+    }
+
+    s_sntp_started = true;
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_init();
+}
+
 static bool hmac_sha256_hex(const char *key, const char *msg, char out_hex[65])
 {
     if (key == NULL || msg == NULL || out_hex == NULL) {
@@ -284,6 +423,17 @@ static bool hmac_sha256_hex(const char *key, const char *msg, char out_hex[65])
     return true;
 }
 
+static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
+    switch (evt->event_id) {
+    case HTTP_EVENT_ON_DATA:
+        break;
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
 static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
 {
     if (cfg == NULL) {
@@ -295,8 +445,12 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
         return ESP_ERR_NO_MEM;
     }
 
-    int64_t now_s = esp_timer_get_time() / 1000000;
-    cJSON_AddNumberToObject(root, "timestamp", (double)now_s);
+    int64_t uptime_s = time_uptime_s();
+    int64_t epoch_s = time_now_epoch_s();
+    cJSON_AddNumberToObject(root, "uptime_s", (double)uptime_s);
+    if (epoch_s > 0) {
+        cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
+    }
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -316,6 +470,7 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
         .keep_alive_enable = false,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
@@ -369,8 +524,12 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
         return ESP_ERR_NO_MEM;
     }
 
-    int64_t now_s = esp_timer_get_time() / 1000000;
-    cJSON_AddNumberToObject(root, "timestamp", (double)now_s);
+    int64_t uptime_s = time_uptime_s();
+    int64_t epoch_s = time_now_epoch_s();
+    cJSON_AddNumberToObject(root, "uptime_s", (double)uptime_s);
+    if (epoch_s > 0) {
+        cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
+    }
 
     bool include_gps = false;
     gps_fix_t to_send = { 0 };
@@ -415,6 +574,7 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
         .keep_alive_enable = false,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
@@ -468,8 +628,12 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
         return ESP_ERR_NO_MEM;
     }
 
-    int64_t now_s = esp_timer_get_time() / 1000000;
-    cJSON_AddNumberToObject(root, "timestamp", (double)now_s);
+    int64_t uptime_s = time_uptime_s();
+    int64_t epoch_s = time_now_epoch_s();
+    cJSON_AddNumberToObject(root, "uptime_s", (double)uptime_s);
+    if (epoch_s > 0) {
+        cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
+    }
 
     cJSON *inputs = cJSON_AddObjectToObject(root, "inputs");
     if (inputs) {
@@ -498,6 +662,7 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
         .keep_alive_enable = false,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
@@ -582,6 +747,8 @@ static void send_task(void *arg)
             last_loc_us = now_us;
         }
 
+        queue_drain_step();
+
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -607,6 +774,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         s_wifi_retry = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         ESP_LOGI(TAG, "WiFi got IP (WIFI_CONNECTED_BIT set)");
+
+        time_maybe_start_sntp();
+        time_try_update_base_from_system();
     }
 }
 
@@ -829,6 +999,86 @@ static esp_err_t http_save_post(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t http_queue_get(httpd_req_t *req)
+{
+    if (s_queue_mutex == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Queue not initialized");
+        return ESP_FAIL;
+    }
+
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Queue busy");
+        return ESP_FAIL;
+    }
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        xSemaphoreGive(s_queue_mutex);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS open failed");
+        return ESP_FAIL;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *items = cJSON_AddArrayToObject(root, "items");
+    cJSON_AddNumberToObject(root, "capacity", NYS_QUEUE_SIZE);
+    cJSON_AddNumberToObject(root, "next_seq", (double)s_queue_next_seq);
+    cJSON_AddNumberToObject(root, "widx", (double)s_queue_widx);
+
+    if (items) {
+        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
+            nys_queue_rec_t rec;
+            if (!queue_load_rec_locked(h, i, &rec)) {
+                continue;
+            }
+
+            cJSON *it = cJSON_CreateObject();
+            if (!it) {
+                continue;
+            }
+
+            cJSON_AddNumberToObject(it, "idx", (double)i);
+            cJSON_AddNumberToObject(it, "seq", (double)rec.seq);
+            cJSON_AddNumberToObject(it, "uptime_s", (double)rec.ts_s);
+            if (rec.queued_at_epoch_s > 0) {
+                cJSON_AddNumberToObject(it, "message_timestamp", (double)rec.queued_at_epoch_s);
+            }
+            cJSON_AddBoolToObject(it, "sent", rec.sent ? true : false);
+
+            cJSON *gps = cJSON_AddObjectToObject(it, "gps");
+            if (gps) {
+                if (rec.has_coords) {
+                    cJSON_AddNumberToObject(gps, "lat", ((double)rec.lat_e6) / 1000000.0);
+                    cJSON_AddNumberToObject(gps, "lng", ((double)rec.lon_e6) / 1000000.0);
+                }
+                cJSON_AddNumberToObject(gps, "fix_quality", rec.fix_quality);
+                cJSON_AddNumberToObject(gps, "satellites", rec.sats_used);
+                cJSON_AddBoolToObject(gps, "fix", rec.fix ? true : false);
+                if (rec.last_known) {
+                    cJSON_AddBoolToObject(gps, "last_known", true);
+                }
+            }
+
+            cJSON_AddItemToArray(items, it);
+        }
+    }
+
+    nvs_close(h);
+    xSemaphoreGive(s_queue_mutex);
+
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No mem");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+    free(json);
+    return ESP_OK;
+}
+
 static httpd_handle_t start_setup_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -851,9 +1101,16 @@ static httpd_handle_t start_setup_webserver(void)
         .handler = http_save_post,
         .user_ctx = NULL,
     };
+    httpd_uri_t queue = {
+        .uri = "/queue",
+        .method = HTTP_GET,
+        .handler = http_queue_get,
+        .user_ctx = NULL,
+    };
 
     (void)httpd_register_uri_handler(server, &root);
     (void)httpd_register_uri_handler(server, &save);
+    (void)httpd_register_uri_handler(server, &queue);
     return server;
 }
 
@@ -1220,6 +1477,309 @@ static void gpio_input_watch_task(void *arg)
     }
 }
 
+static void queue_init(void)
+{
+    if (s_queue_mutex == NULL) {
+        s_queue_mutex = xSemaphoreCreateMutex();
+    }
+
+    s_queue_next_seq = 1;
+    s_queue_widx = 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u32(h, "seq", &s_queue_next_seq);
+        (void)nvs_get_u32(h, "widx", &s_queue_widx);
+        nvs_close(h);
+    }
+
+    if (s_queue_next_seq == 0) {
+        s_queue_next_seq = 1;
+    }
+    if (s_queue_widx >= NYS_QUEUE_SIZE) {
+        s_queue_widx = 0;
+    }
+}
+
+static void queue_save_meta_locked(nvs_handle_t h)
+{
+    (void)nvs_set_u32(h, "seq", s_queue_next_seq);
+    (void)nvs_set_u32(h, "widx", s_queue_widx);
+}
+
+static void queue_key_for_idx(char out[8], uint32_t idx)
+{
+    snprintf(out, 8, "r%02u", (unsigned)idx);
+}
+
+static void queue_push_sample(void)
+{
+    if (s_queue_mutex == NULL) {
+        return;
+    }
+
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+        return;
+    }
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        xSemaphoreGive(s_queue_mutex);
+        return;
+    }
+
+    int64_t now_s = time_uptime_s();
+    bool has_last = s_last_fix_valid && s_last_fix.has_fix;
+    bool fresh = false;
+    if (has_last) {
+        int64_t age_us = esp_timer_get_time() - s_last_fix_time_us;
+        fresh = age_us < 5000000;
+    }
+
+    nys_queue_rec_t rec = { 0 };
+    rec.magic = NYS_QUEUE_MAGIC;
+    rec.seq = s_queue_next_seq++;
+    rec.ts_s = now_s;
+    rec.queued_at_epoch_s = time_now_epoch_s();
+    rec.sent = 0;
+
+    if (has_last) {
+        rec.has_coords = 1;
+        rec.lat_e6 = (int32_t)lrint(s_last_fix.lat_deg * 1000000.0);
+        rec.lon_e6 = (int32_t)lrint(s_last_fix.lon_deg * 1000000.0);
+        rec.fix_quality = (int16_t)s_last_fix.fix_quality;
+        rec.sats_used = (int16_t)s_last_fix.sats_used;
+        rec.fix = fresh ? 1 : 0;
+        rec.last_known = fresh ? 0 : 1;
+    } else {
+        rec.has_coords = 0;
+        rec.fix = 0;
+        rec.last_known = 0;
+    }
+
+    char key[8];
+    queue_key_for_idx(key, s_queue_widx);
+    (void)nvs_set_blob(h, key, &rec, sizeof(rec));
+
+    s_queue_widx = (s_queue_widx + 1) % NYS_QUEUE_SIZE;
+    queue_save_meta_locked(h);
+    (void)nvs_commit(h);
+    nvs_close(h);
+
+    xSemaphoreGive(s_queue_mutex);
+}
+
+static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out)
+{
+    if (out == NULL) {
+        return false;
+    }
+    char key[8];
+    queue_key_for_idx(key, idx);
+    size_t len = sizeof(*out);
+    esp_err_t err = nvs_get_blob(h, key, out, &len);
+    if (err != ESP_OK) {
+        return false;
+    }
+    if (len == sizeof(*out)) {
+        if (out->magic != NYS_QUEUE_MAGIC) {
+            return false;
+        }
+        return true;
+    }
+    if (len == sizeof(nys_queue_rec_v1_t)) {
+        nys_queue_rec_v1_t v1;
+        memcpy(&v1, out, sizeof(v1));
+        if (v1.magic != NYS_QUEUE_MAGIC) {
+            return false;
+        }
+        memset(out, 0, sizeof(*out));
+        out->magic = v1.magic;
+        out->seq = v1.seq;
+        out->ts_s = v1.ts_s;
+        out->queued_at_epoch_s = 0;
+        out->lat_e6 = v1.lat_e6;
+        out->lon_e6 = v1.lon_e6;
+        out->fix_quality = v1.fix_quality;
+        out->sats_used = v1.sats_used;
+        out->has_coords = v1.has_coords;
+        out->fix = v1.fix;
+        out->last_known = v1.last_known;
+        out->sent = v1.sent;
+        return true;
+    }
+    return false;
+}
+
+static void queue_mark_sent_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *rec)
+{
+    if (rec == NULL) {
+        return;
+    }
+    rec->sent = 1;
+    char key[8];
+    queue_key_for_idx(key, idx);
+    (void)nvs_set_blob(h, key, rec, sizeof(*rec));
+}
+
+static void queue_drain_step(void)
+{
+    if (s_queue_mutex == NULL) {
+        return;
+    }
+    EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+    if ((bits & WIFI_CONNECTED_BIT) == 0) {
+        return;
+    }
+
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+        return;
+    }
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        xSemaphoreGive(s_queue_mutex);
+        return;
+    }
+
+    uint32_t best_idx = UINT32_MAX;
+    uint32_t best_seq = 0;
+    nys_queue_rec_t best = { 0 };
+
+    for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
+        nys_queue_rec_t cur;
+        if (!queue_load_rec_locked(h, i, &cur)) {
+            continue;
+        }
+        if (cur.sent) {
+            continue;
+        }
+        if (best_idx == UINT32_MAX || cur.seq < best_seq) {
+            best_idx = i;
+            best_seq = cur.seq;
+            best = cur;
+        }
+    }
+
+    if (best_idx == UINT32_MAX) {
+        nvs_close(h);
+        xSemaphoreGive(s_queue_mutex);
+        return;
+    }
+
+    nvs_close(h);
+    xSemaphoreGive(s_queue_mutex);
+
+    if (http_send_location_record(&s_cfg, &best) == ESP_OK) {
+        if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+            if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
+                nys_queue_rec_t to_update;
+                if (queue_load_rec_locked(h, best_idx, &to_update) && to_update.seq == best.seq) {
+                    queue_mark_sent_locked(h, best_idx, &to_update);
+                    queue_save_meta_locked(h);
+                    (void)nvs_commit(h);
+                }
+                nvs_close(h);
+            }
+            xSemaphoreGive(s_queue_mutex);
+        }
+    }
+}
+
+static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue_rec_t *rec)
+{
+    if (cfg == NULL || rec == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    cJSON_AddNumberToObject(root, "uptime_s", (double)rec->ts_s);
+    if (rec->queued_at_epoch_s > 0) {
+        cJSON_AddNumberToObject(root, "message_timestamp", (double)rec->queued_at_epoch_s);
+    }
+
+    cJSON *gps = cJSON_AddObjectToObject(root, "gps");
+    if (gps) {
+        if (rec->has_coords) {
+            cJSON_AddNumberToObject(gps, "lat", ((double)rec->lat_e6) / 1000000.0);
+            cJSON_AddNumberToObject(gps, "lng", ((double)rec->lon_e6) / 1000000.0);
+        }
+        cJSON_AddNumberToObject(gps, "fix_quality", rec->fix_quality);
+        cJSON_AddNumberToObject(gps, "satellites", rec->sats_used);
+        cJSON_AddBoolToObject(gps, "fix", rec->fix ? true : false);
+        if (rec->last_known) {
+            cJSON_AddBoolToObject(gps, "last_known", true);
+        }
+    }
+
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    char sig[65];
+    if (!hmac_sha256_hex(cfg->device_key, json, sig)) {
+        free(json);
+        return ESP_FAIL;
+    }
+
+    esp_http_client_config_t http_cfg = {
+        .url = NYS_API_URL,
+        .method = HTTP_METHOD_POST,
+        .timeout_ms = 10000,
+        .disable_auto_redirect = false,
+        .keep_alive_enable = false,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
+    if (!client) {
+        free(json);
+        return ESP_FAIL;
+    }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "Accept", "application/json");
+    esp_http_client_set_header(client, "Connection", "close");
+    esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
+    esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
+    esp_http_client_set_post_field(client, json, (int)strlen(json));
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "POST status=%d", status);
+    } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
+        ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);
+        err = ESP_OK;
+    } else {
+        ESP_LOGE(TAG, "POST failed: %s (status=%d)", esp_err_to_name(err), status);
+    }
+
+    esp_http_client_cleanup(client);
+    free(json);
+    return err;
+}
+
+static void gps_sample_task(void *arg)
+{
+    (void)arg;
+    while (1) {
+        uint32_t interval_s = s_cfg.location_interval_s;
+        if (interval_s == 0) {
+            interval_s = 60;
+        }
+        queue_push_sample();
+        vTaskDelay(pdMS_TO_TICKS((int)(interval_s * 1000)));
+    }
+}
+
 void app_main(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -1232,8 +1792,13 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    esp_log_level_set("HTTP_CLIENT", ESP_LOG_WARN);
+
     (void)cfg_load(&s_cfg);
     cfg_ensure_identity(&s_cfg);
+
+    time_init();
+    queue_init();
 
     if (!s_cfg.has_wifi) {
         ESP_LOGW(TAG, "No WiFi configured. Starting setup portal.");
@@ -1242,12 +1807,7 @@ void app_main(void)
     } else {
         wifi_ensure_inited(true, true);
         wifi_start_sta_with_portal_window(s_cfg.ssid, s_cfg.password);
-        BaseType_t ok = xTaskCreate(send_task, "send_task", 6144, NULL, 5, NULL);
-        if (ok != pdPASS) {
-            ESP_LOGE(TAG, "Failed to create send_task");
-        } else {
-            ESP_LOGI(TAG, "send_task created");
-        }
+        xTaskCreate(send_task, "send_task", 6144, NULL, 5, NULL);
     }
 
     if (gps_nvs_load_last_fix() == ESP_OK) {
@@ -1297,4 +1857,5 @@ void app_main(void)
     xTaskCreate(gps_uart_task, "gps_uart_task", 4096, NULL, 5, NULL);
     xTaskCreate(gpio_test_task, "gpio_test_task", 3072, NULL, 5, NULL);
     xTaskCreate(gpio_input_watch_task, "gpio_input_watch_task", 3072, NULL, 5, NULL);
+    xTaskCreate(gps_sample_task, "gps_sample_task", 4096, NULL, 5, NULL);
 }

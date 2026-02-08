@@ -7,6 +7,12 @@
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AccountList">Accounts</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/UserList">Users</RouterLink>
       <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/AuditLogs">Audit Logs</RouterLink>
+      <RouterLink v-if="isAuthenticated" to="/Shop/Products">Shop</RouterLink>
+      <RouterLink v-if="isAuthenticated" to="/Shop/Cart">Cart</RouterLink>
+      <RouterLink v-if="isAuthenticated" to="/Shop/MyOrders">My Orders</RouterLink>
+      <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/POS">POS</RouterLink>
+      <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/SalesSummary">Sales Summary</RouterLink>
+      <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/CashFlow">Cash Flow</RouterLink>
       <LogOut />
     </nav>
   </aside>

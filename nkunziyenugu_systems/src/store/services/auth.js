@@ -61,11 +61,12 @@ export default {
   getters: {
     isAuthenticated: state => !!state.token,
 
-    role: state => state.activeAccount?.pivot?.role || null,
+    role: state => (state.activeAccount?.pivot?.role || null),
+    normalizedRole: (state, getters) => (getters.role ? String(getters.role).toLowerCase() : null),
 
-    isSuperAdmin: (state, getters) => getters.role === 'superadmin',
-    isOwner: (state, getters) => getters.role === 'owner',
-    isAdmin: (state, getters) => getters.role === 'admin',
-    isViewer: (state, getters) => getters.role === 'viewer'
+    isSuperAdmin: (state, getters) => getters.normalizedRole === 'superadmin' || getters.normalizedRole === 'super_admin',
+    isOwner: (state, getters) => getters.normalizedRole === 'owner',
+    isAdmin: (state, getters) => getters.normalizedRole === 'admin',
+    isViewer: (state, getters) => getters.normalizedRole === 'viewer'
   }
 }

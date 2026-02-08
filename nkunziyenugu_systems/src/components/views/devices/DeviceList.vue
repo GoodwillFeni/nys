@@ -17,6 +17,7 @@
           <th>Is Active</th>
           <th>Has Alarm</th>
           <th>Created At</th>
+          <th>Last seen</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -30,6 +31,7 @@
           <td>{{ device.is_active ? 'Yes' : 'No' }}</td>
           <td>{{ device.has_alarm ? 'Yes' : 'No' }}</td>
           <td>{{ formatDate(device.created_at) }}</td>
+          <td>{{ formatDate(device.last_seen_at) }}</td>
           <td>
             <button @click="DeviceLogs(device)" class="button-info">
               <i class="bi bi-eye"></i>
@@ -75,6 +77,7 @@ export default {
         .get("/devices")
         .then((response) => {
           this.devices = response.data.data;
+          console.log(this.devices)
         })
         .catch((error) => {
           console.error(error);

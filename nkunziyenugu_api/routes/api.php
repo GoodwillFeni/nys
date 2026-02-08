@@ -10,7 +10,10 @@ use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Api\DeviceIngestController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceMessageController;
-
+use App\Http\Controllers\Api\ShopProductController;
+use App\Http\Controllers\Api\ShopOrderController;
+use App\Http\Controllers\Api\ShopPosController;
+use App\Http\Controllers\Api\ShopCashflowController;
 
 Route::post('/register', [AuthController::class, 'register']); //Route for registering a new user
 Route::post('/login', [AuthController::class, 'login']); //Route for logging in a user
@@ -29,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
         ]);
     });
     Route::get('/dashboard', fn () => ['status' => 'ok']);
+
     // Accounts
     Route::get('/accounts/available', [AccountsController::class, 'availableAccounts']);
     Route::post('/accounts', [AccountsController::class, 'createAccount']);
@@ -44,7 +48,36 @@ Route::middleware('auth:sanctum')->group(function () {
     // Audit logs (owner/admin logic handled in controller)
     Route::get('/audit-logs', [AuditLogController::class, 'getLogs']);
     Route::get('/audit-logs/statistics', [AuditLogController::class, 'getStatistics']);
+
+    // Shop - Products (all authenticated users with account access can view)
+    Route::get('/shop/products', [ShopProductController::class, 'index']);
+    Route::get('/shop/products/{product}', [ShopProductController::class, 'show']);
+    // Shop - Products (privileged roles only)
+    Route::post('/shop/products', [ShopProductController::class, 'store']);
+    Route::put('/shop/products/{product}', [ShopProductController::class, 'update']);
+    Route::delete('/shop/products/{product}', [ShopProductController::class, 'destroy']);
+
+    // Shop - Online Orders (customer cart checkout)
+    Route::get('/shop/orders/my', [ShopOrderController::class, 'myOrders']);
+    Route::post('/shop/orders', [ShopOrderController::class, 'createOrder']);
+
+    // Shop - POS (privileged roles only; enforced in controller)
+    Route::get('/shop/pos/cart', [ShopPosController::class, 'getOpenCart']);
+    Route::post('/shop/pos/cart/items', [ShopPosController::class, 'addItem']);
+    Route::put('/shop/pos/cart/items/{item}', [ShopPosController::class, 'updateItem']);
+    Route::delete('/shop/pos/cart/items/{item}', [ShopPosController::class, 'removeItem']);
+    Route::post('/shop/pos/checkout', [ShopPosController::class, 'checkout']);
+    Route::get('/shop/pos/sales-report', [ShopPosController::class, 'salesReport']);
+    Route::put('/shop/pos/sale-items/{item}', [ShopPosController::class, 'updateSaleItem']);
+
+    // Shop - Cashflow (privileged roles only; enforced in controller)
+    Route::get('/shop/cashflow', [ShopCashflowController::class, 'index']);
+    Route::get('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'show']);
+    Route::post('/shop/cashflow', [ShopCashflowController::class, 'store']);
+    Route::put('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'update']);
+    Route::delete('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'destroy']);
 });
+
 //End of protected routes
 
 //Device management routes

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->decimal('lat', 10, 7)->nullable();
             $table->decimal('lng', 10, 7)->nullable();
 
-            $table->timestamp('device_timestamp')->nullable();
+            $table->timestamp('message_timestamp')->nullable();
             $table->timestamps();
         });
     }

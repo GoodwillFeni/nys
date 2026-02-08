@@ -11,12 +11,12 @@ class DeviceMessage extends Model
         'payload',
         'lat',
         'lng',
-        'device_timestamp',
+        'message_timestamp',
     ];
 
     protected $casts = [
         'payload' => 'array',
-        'device_timestamp' => 'datetime',
+        'message_timestamp' => 'datetime',
     ];
 
     public function device()

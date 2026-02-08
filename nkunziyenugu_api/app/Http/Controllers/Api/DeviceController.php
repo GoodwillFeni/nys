@@ -67,19 +67,24 @@ class DeviceController extends Controller
             }
         }
 
-        $query = $device->messages()->orderBy('created_at', 'desc');
+        $query = $device->messages();
 
         if ($request->filled('type')) {
             $query->where('type', $request->type);
         }
 
         if ($request->filled('from')) {
-            $query->where('created_at', '>=', Carbon::parse($request->from));
+            $from = Carbon::parse($request->from);
+            $query->whereRaw('COALESCE(message_timestamp, created_at) >= ?', [$from]);
         }
 
         if ($request->filled('to')) {
-            $query->where('created_at', '<=', Carbon::parse($request->to));
+            $to = Carbon::parse($request->to);
+            $query->whereRaw('COALESCE(message_timestamp, created_at) <= ?', [$to]);
         }
+
+        $query->orderByRaw('COALESCE(message_timestamp, created_at) desc')
+            ->orderBy('created_at', 'desc');
 
         $perPage = (int) $request->get('per_page', 20);
         if ($perPage <= 0) {
@@ -97,7 +102,7 @@ class DeviceController extends Controller
                 'payload' => $msg->payload,
                 'lat' => $msg->lat,
                 'lng' => $msg->lng,
-                'device_timestamp' => $msg->device_timestamp,
+                'message_timestamp' => $msg->message_timestamp,
                 'created_at' => $msg->created_at,
                 'device' => [
                     'id' => $device->id,

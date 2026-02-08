@@ -21,6 +21,20 @@ class ProcessDeviceMessageJob implements ShouldQueue
     {
         $type = $this->detectType();
 
+        $epoch = null;
+        if (isset($this->payload['message_timestamp'])) {
+            $epoch = (int) $this->payload['message_timestamp'];
+        } elseif (isset($this->payload['queued_at'])) {
+            $epoch = (int) $this->payload['queued_at'];
+        } elseif (isset($this->payload['timestamp'])) {
+            $epoch = (int) $this->payload['timestamp'];
+        }
+
+        $messageTimestamp = now();
+        if ($epoch !== null && $epoch >= 946684800 && $epoch <= 4102444800) {
+            $messageTimestamp = Carbon::createFromTimestamp($epoch);
+        }
+
         DeviceMessage::create([
             'device_id' => $this->device->id,
             'type' => $type,
@@ -30,9 +44,7 @@ class ProcessDeviceMessageJob implements ShouldQueue
             'fix_quality' => $this->payload['gps']['fix_quality'] ?? null,
             'satellites' => $this->payload['gps']['satellites'] ?? null,
             'fix' => $this->payload['gps']['fix'] ?? null,
-            'device_timestamp' => Carbon::createFromTimestamp(
-                $this->payload['timestamp']
-            ),
+            'message_timestamp' => $messageTimestamp,
         ]);
 
         $this->device->update([
@@ -43,7 +55,7 @@ class ProcessDeviceMessageJob implements ShouldQueue
     private function detectType()
     {
         if (isset($this->payload['gps'])) return 'location';
-        if (isset($this->payload['sensors'])) return 'sensor';
+        if (isset($this->payload['sensors']) || isset($this->payload['inputs'])) return 'sensor';
         return 'heartbeat';
     }
 }
