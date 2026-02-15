@@ -3,17 +3,17 @@
     <div class="card p-3 mb-3">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="m-0">Sales Summary</h4>
-        <button class="button-info" @click="fetch">Load</button>
+        <!-- <button class="button-info" @click="fetch">Load</button> -->
       </div>
 
       <div class="row g-2 mt-2">
         <div class="col-12 col-md-4">
           <label class="form-label">From</label>
-          <input class="form-control form-control-sm" type="date" v-model="from" />
+          <input class="form-control form-control-sm" type="date" v-model="from" @change="fetch"/>
         </div>
         <div class="col-12 col-md-4">
           <label class="form-label">To</label>
-          <input class="form-control form-control-sm" type="date" v-model="to" />
+          <input class="form-control form-control-sm" type="date" v-model="to" @change="fetch" />
         </div>
         <div class="col-12 col-md-4 d-flex align-items-end">
           <div class="fw-bold">Total: R {{ formatMoney(total) }}</div>
@@ -31,7 +31,10 @@
           <tr>
             <th>#</th>
             <th>Date</th>
+            <th>Cashier</th>
             <th>Customer</th>
+            <th>Payment</th>
+            <th>Paid</th>
             <th>Total</th>
             <th>Profit</th>
             <th></th>
@@ -41,19 +44,55 @@
           <template v-for="(s, idx) in sales" :key="s.id">
             <tr>
               <td>{{ idx + 1 }}</td>
-              <td>{{ s.sale_datetime }}</td>
-              <td>{{ s.customer_name || '-' }}</td>
+              <td>{{ formatDateTime(s.sale_datetime) }}</td>
+              <td>{{ formatUser(s.cashier) }}</td>
+              <td>
+                <span>{{ s.customer_name || '-' }}</span>
+                <button
+                  v-if="!s.customer_name"
+                  class="button-info ms-2"
+                  @click="setCustomerName(s)"
+                >
+                  <i class="bi bi-person-plus"></i>
+                </button>
+              </td>
+              <td>{{ s.payment_method || '-' }}</td>
+              <td>
+                <span v-if="s.is_paid">Yes</span>
+                <span v-else>No</span>
+                <button
+                  v-if="!s.is_paid && s.payment_method === 'Credit' && markPaidSaleId !== s.id"
+                  class="button-success ms-2"
+                  @click="startMarkPaid(s)"
+                >
+                  <i class="bi bi-check"></i>
+                </button>
+
+                <span v-if="!s.is_paid && s.payment_method === 'Credit' && markPaidSaleId === s.id" class="ms-2">
+                  <select class="form-control form-control-sm d-inline-block" style="width: 160px" v-model="markPaidMethod">
+                    <option value="Cash">Cash</option>
+                    <option value="Cash Deposit">Cash Deposit</option>
+                  </select>
+                  <button class="button-success ms-2" :disabled="markPaidSaving" @click="confirmMarkPaid(s)">
+                    {{ markPaidSaving ? 'Saving...' : 'Confirm' }}
+                  </button>
+                  <button class="button-danger ms-2" :disabled="markPaidSaving" @click="cancelMarkPaid">
+                    Cancel
+                  </button>
+                </span>
+              </td>
               <td>R {{ formatMoney(s.total_amount) }}</td>
               <td>R {{ formatMoney(s.total_profit) }}</td>
               <td style="width: 1%; white-space: nowrap">
                 <button class="button-info" @click="toggleSale(s.id)">
-                  {{ expandedSaleId === s.id ? 'Hide' : 'View' }}
+                  <i v-if="expandedSaleId === s.id" class="bi bi-eye-slash"></i>
+                  <i v-else class="bi bi-eye"></i>
                 </button>
               </td>
             </tr>
 
             <tr v-if="expandedSaleId === s.id">
-              <td colspan="6">
+              <td colspan="9">
                 <div class="p-2" style="background: rgba(255,255,255,0.06); border-radius: 8px;">
                   <div class="fw-bold mb-2">Items</div>
                   <div v-if="!s.items || s.items.length === 0" class="small">No items</div>
@@ -66,7 +105,7 @@
                         <th>Unit</th>
                         <th>Total</th>
                         <th>Profit/Item</th>
-                        <th></th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -84,8 +123,10 @@
                           />
                         </td>
                         <td style="width: 1%; white-space: nowrap">
-                          <button class="button-success" :disabled="savingItemId === it.id" @click="saveItemProfit(it)">
-                            {{ savingItemId === it.id ? 'Saving...' : 'Save' }}
+                          <button class="button-success" 
+                          :disabled="savingItemId === it.id" 
+                          @click="saveItemProfit(it)">
+                            <i class="bi bi-check"></i>
                           </button>
                         </td>
                       </tr>
@@ -121,6 +162,9 @@ export default {
       expandedSaleId: null,
       profitEditByItemId: {},
       savingItemId: null,
+      markPaidSaleId: null,
+      markPaidMethod: 'Cash',
+      markPaidSaving: false,
     }
   },
   computed: {
@@ -132,10 +176,28 @@ export default {
     this.fetch()
   },
   methods: {
+    formatUser(u) {
+      if (!u) return '-'
+      const name = String(u.name || '').trim()
+      const surname = String(u.surname || '').trim()
+      return `${name} ${surname}`.trim() || '-'
+    },
     formatMoney(v) {
       const n = Number(v)
       if (Number.isNaN(n)) return '0.00'
       return n.toFixed(2)
+    },
+    formatDateTime(v) {
+      if (!v) return '-'
+      const d = new Date(v)
+      if (Number.isNaN(d.getTime())) return String(v)
+      const yyyy = d.getFullYear()
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mi = String(d.getMinutes()).padStart(2, '0')
+      const ss = String(d.getSeconds()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
     },
     toggleSale(id) {
       if (this.expandedSaleId === id) {
@@ -190,6 +252,66 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    startMarkPaid(sale) {
+      this.markPaidSaleId = sale?.id || null
+      this.markPaidMethod = 'Cash'
+      this.error = null
+    },
+    cancelMarkPaid() {
+      this.markPaidSaleId = null
+      this.markPaidMethod = 'Cash'
+      this.markPaidSaving = false
+    },
+    async confirmMarkPaid(sale) {
+      if (!sale?.id) return
+
+      this.markPaidSaving = true
+      this.error = null
+
+      try {
+        if (!sale?.customer_name) {
+          const name = window.prompt('Customer name', '')
+          if (!name) return
+
+          const resName = await api.put(`/shop/pos/sales/${sale.id}`, { customer_name: name })
+          const updatedNameSale = resName.data?.data
+          if (updatedNameSale?.id) {
+            const idx = this.sales.findIndex(x => x.id === updatedNameSale.id)
+            if (idx >= 0) this.sales.splice(idx, 1, updatedNameSale)
+            sale = updatedNameSale
+          }
+        }
+
+        const res = await api.post(`/shop/pos/sales/${sale.id}/mark-paid`, { paid_method: this.markPaidMethod })
+        const updated = res.data?.data
+        if (updated?.id) {
+          const idx = this.sales.findIndex(x => x.id === updated.id)
+          if (idx >= 0) this.sales.splice(idx, 1, updated)
+        }
+
+        this.cancelMarkPaid()
+      } catch (e) {
+        this.error = e?.response?.data?.message || e.message || 'Failed to mark sale as paid'
+      } finally {
+        this.markPaidSaving = false
+      }
+    },
+    async setCustomerName(sale) {
+      const name = window.prompt('Customer name', '')
+      if (!name) return
+
+      this.error = null
+      try {
+        const res = await api.put(`/shop/pos/sales/${sale.id}`, { customer_name: name })
+        const updated = res.data?.data
+        if (updated?.id) {
+          const idx = this.sales.findIndex(x => x.id === updated.id)
+          if (idx >= 0) this.sales.splice(idx, 1, updated)
+        }
+      } catch (e) {
+        this.error = e?.response?.data?.message || e.message || 'Failed to update customer name'
+      }
     }
   }
 }
@@ -208,10 +330,56 @@ export default {
 
 .table {
   color: #fff;
+  background: transparent;
 }
 
 .table th,
 .table td {
+  color: #fff;
+}
+
+/* Bootstrap 5 applies cell background via :not(caption) selector; override it */
+.table > :not(caption) > * > * {
+  background-color: transparent !important;
+  color: #fff !important;
+}
+
+.table thead th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.table tbody tr {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.form-control {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+}
+
+.form-control::placeholder {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+.form-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.text-muted {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+select.form-control {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+select.form-control option {
+  background-color: #27253f;
   color: #fff;
 }
 </style>

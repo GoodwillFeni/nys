@@ -40,7 +40,7 @@
 #define TEST_OUTPUT_GPIO GPIO_NUM_2
 
 static const char *TAG = "NYS_ESP";
-#define NYS_API_URL "http://192.168.101.175:8000/api/device/message" //Home
+#define NYS_API_URL "http://192.168.101.177:8000/api/device/message" //Home
 //#define NYS_API_URL "http://192.168.200.21:8000/api/device/message" //Work
 #define NYS_WIFI_AP_SSID_PREFIX "NYS_"
 #define NYS_WIFI_AP_PASS "Goodwill@123"
@@ -69,6 +69,7 @@ typedef struct {
     char ssid[33];
     char password[65];
     bool has_wifi;
+    char api_url[128];
     char device_uid[32];
     char device_key[128];
     uint32_t heartbeat_interval_s;
@@ -128,7 +129,7 @@ static void ap_start_portal(void);
 static void ap_stop_portal(void);
 static void wifi_start_sta_with_portal_window(const char *ssid, const char *password);
 
-static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t location_interval_s, const char *input1_desc);
+static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t location_interval_s, const char *input1_desc, const char *api_url);
 static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg);
 static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, bool has_fix);
 static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level);
@@ -138,11 +139,14 @@ static void gps_sample_task(void *arg);
 static void queue_init(void);
 static void queue_push_sample(void);
 static void queue_drain_step(void);
+static uint32_t queue_count_unsent(void);
+static uint32_t queue_purge_sent(void);
 static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out);
+static void queue_delete_rec_locked(nvs_handle_t h, uint32_t idx);
 static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue_rec_t *rec);
 
 static void time_init(void);
-static int64_t time_uptime_s(void);
+static void time_try_update_base_from_system(void);
 static int64_t time_now_epoch_s(void);
 static void time_maybe_start_sntp(void);
 
@@ -178,10 +182,13 @@ static esp_err_t cfg_load(nys_cfg_t *out)
 
     size_t ssid_len = sizeof(out->ssid);
     size_t pass_len = sizeof(out->password);
+    size_t api_len = sizeof(out->api_url);
     size_t uid_len = sizeof(out->device_uid);
     size_t key_len = sizeof(out->device_key);
     out->heartbeat_interval_s = 60;
     out->location_interval_s = 60;
+    strncpy(out->api_url, NYS_API_URL, sizeof(out->api_url));
+    out->api_url[sizeof(out->api_url) - 1] = 0;
     strncpy(out->input1_desc, "Input 1", sizeof(out->input1_desc));
     out->input1_desc[sizeof(out->input1_desc) - 1] = 0;
 
@@ -189,6 +196,7 @@ static esp_err_t cfg_load(nys_cfg_t *out)
         out->has_wifi = true;
         (void)nvs_get_str(h, "pass", out->password, &pass_len);
     }
+    (void)nvs_get_str(h, "api_url", out->api_url, &api_len);
     (void)nvs_get_str(h, "uid", out->device_uid, &uid_len);
     (void)nvs_get_str(h, "key", out->device_key, &key_len);
     (void)nvs_get_u32(h, "hb_int", &out->heartbeat_interval_s);
@@ -230,7 +238,7 @@ static esp_err_t cfg_save_wifi(const char *ssid, const char *password)
     return err;
 }
 
-static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t location_interval_s, const char *input1_desc)
+static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t location_interval_s, const char *input1_desc, const char *api_url)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
@@ -244,6 +252,9 @@ static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t locat
     }
     if (err == ESP_OK && input1_desc != NULL) {
         err = nvs_set_str(h, "in1_desc", input1_desc);
+    }
+    if (err == ESP_OK && api_url != NULL) {
+        err = nvs_set_str(h, "api_url", api_url);
     }
     if (err == ESP_OK) {
         err = nvs_commit(h);
@@ -440,6 +451,8 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
         return ESP_ERR_INVALID_ARG;
     }
 
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
+
     cJSON *root = cJSON_CreateObject();
     if (!root) {
         return ESP_ERR_NO_MEM;
@@ -465,7 +478,7 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     }
 
     esp_http_client_config_t http_cfg = {
-        .url = NYS_API_URL,
+        .url = url,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
@@ -484,6 +497,7 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
     esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
+    esp_http_client_set_header(client, "X-DEVICE-KEY", cfg->device_key);
     esp_http_client_set_post_field(client, json, (int)strlen(json));
 
     esp_err_t err = esp_http_client_perform(client);
@@ -499,7 +513,11 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
             }
         }
     }
+
     if (err == ESP_OK) {
+        if (status < 200 || status >= 300) {
+            err = ESP_FAIL;
+        }
         ESP_LOGI(TAG, "POST status=%d", status);
     } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
         ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);
@@ -518,6 +536,8 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -569,7 +589,7 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     }
 
     esp_http_client_config_t http_cfg = {
-        .url = NYS_API_URL,
+        .url = url,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
@@ -588,6 +608,7 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
     esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
+    esp_http_client_set_header(client, "X-DEVICE-KEY", cfg->device_key);
     esp_http_client_set_post_field(client, json, (int)strlen(json));
 
     esp_err_t err = esp_http_client_perform(client);
@@ -604,6 +625,9 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
         }
     }
     if (err == ESP_OK) {
+        if (status < 200 || status >= 300) {
+            err = ESP_FAIL;
+        }
         ESP_LOGI(TAG, "POST status=%d", status);
     } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
         ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);
@@ -622,6 +646,8 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -657,7 +683,7 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
     }
 
     esp_http_client_config_t http_cfg = {
-        .url = NYS_API_URL,
+        .url = url,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
@@ -676,6 +702,7 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
     esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
+    esp_http_client_set_header(client, "X-DEVICE-KEY", cfg->device_key);
     esp_http_client_set_post_field(client, json, (int)strlen(json));
 
     esp_err_t err = esp_http_client_perform(client);
@@ -691,6 +718,9 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
         }
     }
     if (err == ESP_OK) {
+        if (status < 200 || status >= 300) {
+            err = ESP_FAIL;
+        }
         ESP_LOGI(TAG, "POST status=%d", status);
     } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
         ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);
@@ -711,6 +741,9 @@ static void send_task(void *arg)
     ESP_LOGI(TAG, "send_task started");
 
     bool logged_connected = false;
+
+    uint32_t last_backlog_logged = 0;
+    int64_t last_backlog_log_us = 0;
 
     int64_t last_hb_us = 0;
     int64_t last_loc_us = 0;
@@ -736,6 +769,29 @@ static void send_task(void *arg)
         bool do_hb = (last_hb_us == 0) || (now_us - last_hb_us >= hb_int_us);
         bool do_loc = (last_loc_us == 0) || (now_us - last_loc_us >= loc_int_us);
 
+        uint32_t unsent = queue_count_unsent();
+        if (unsent > 2) {
+            if (unsent != last_backlog_logged || (now_us - last_backlog_log_us) > 10000000LL) {
+                ESP_LOGW(TAG, "Queue backlog %u unsent; draining before live sends", (unsigned)unsent);
+                last_backlog_logged = unsent;
+                last_backlog_log_us = now_us;
+            }
+            for (int i = 0; i < 6; i++) {
+                queue_drain_step();
+                vTaskDelay(pdMS_TO_TICKS(100));
+                unsent = queue_count_unsent();
+                if (unsent <= 2) {
+                    break;
+                }
+            }
+            if (unsent <= 2 && last_backlog_logged != 0) {
+                ESP_LOGI(TAG, "Queue backlog reduced to %u unsent; resuming live sends", (unsigned)unsent);
+                last_backlog_logged = 0;
+            }
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+
         if (do_hb) {
             (void)http_send_heartbeat(&s_cfg);
             last_hb_us = now_us;
@@ -756,7 +812,6 @@ static void send_task(void *arg)
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     (void)arg;
-    (void)event_data;
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
@@ -773,7 +828,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         s_wifi_retry = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        ESP_LOGI(TAG, "WiFi got IP (WIFI_CONNECTED_BIT set)");
+        ip_event_got_ip_t *evt = (ip_event_got_ip_t *)event_data;
+        ESP_LOGI(TAG, "WiFi got IP: " IPSTR " (WIFI_CONNECTED_BIT set)", IP2STR(&evt->ip_info.ip));
 
         time_maybe_start_sntp();
         time_try_update_base_from_system();
@@ -824,7 +880,7 @@ static void ap_build_ssid(char out_ssid[33])
 
 static esp_err_t http_root_get(httpd_req_t *req)
 {
-    char html[2048];
+    char html[3072];
     snprintf(
         html,
         sizeof(html),
@@ -834,6 +890,7 @@ static esp_err_t http_root_get(httpd_req_t *req)
         "<form method='POST' action='/save'>"
         "<label>SSID</label><br><input name='ssid' value='%s' style='width:100%%;padding:8px' /><br><br>"
         "<label>Password</label><br><input name='pass' type='password' value='%s' style='width:100%%;padding:8px' /><br><br>"
+        "<label>API URL</label><br><input name='api' value='%s' style='width:100%%;padding:8px' /><br><br>"
         "<label>Heartbeat interval (seconds)</label><br><input name='hb' value='%u' style='width:100%%;padding:8px' /><br><br>"
         "<label>Location interval (seconds)</label><br><input name='loc' value='%u' style='width:100%%;padding:8px' /><br><br>"
         "<label>Input 1 description</label><br><input name='in1' value='%s' style='width:100%%;padding:8px' /><br><br>"
@@ -842,6 +899,7 @@ static esp_err_t http_root_get(httpd_req_t *req)
         "</body></html>",
         s_cfg.ssid,
         s_cfg.password,
+        s_cfg.api_url,
         (unsigned)s_cfg.heartbeat_interval_s,
         (unsigned)s_cfg.location_interval_s,
         s_cfg.input1_desc
@@ -879,7 +937,7 @@ static void reboot_task(void *arg)
 static esp_err_t http_save_post(httpd_req_t *req)
 {
     int total = req->content_len;
-    if (total <= 0 || total > 512) {
+    if (total <= 0 || total > 1024) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request");
         return ESP_FAIL;
     }
@@ -900,12 +958,14 @@ static esp_err_t http_save_post(httpd_req_t *req)
 
     char ssid[33] = {0};
     char pass[65] = {0};
+    char api[128] = {0};
     char hb_s[16] = {0};
     char loc_s[16] = {0};
     char in1[64] = {0};
 
     char *ssid_p = strstr(buf, "ssid=");
     char *pass_p = strstr(buf, "pass=");
+    char *api_p = strstr(buf, "api=");
     char *hb_p = strstr(buf, "hb=");
     char *loc_p = strstr(buf, "loc=");
     char *in1_p = strstr(buf, "in1=");
@@ -926,6 +986,16 @@ static esp_err_t http_save_post(httpd_req_t *req)
         memcpy(pass, pass_p, len);
         pass[len] = 0;
         url_decode_inplace(pass);
+    }
+
+    if (api_p) {
+        api_p += 4;
+        char *end = strchr(api_p, '&');
+        size_t len = end ? (size_t)(end - api_p) : strlen(api_p);
+        if (len >= sizeof(api)) len = sizeof(api) - 1;
+        memcpy(api, api_p, len);
+        api[len] = 0;
+        url_decode_inplace(api);
     }
 
     if (hb_p) {
@@ -977,7 +1047,12 @@ static esp_err_t http_save_post(httpd_req_t *req)
         in1[sizeof(in1) - 1] = 0;
     }
 
-    if (cfg_save_settings(hb, loc, in1) != ESP_OK) {
+    if (api[0] == 0) {
+        strncpy(api, NYS_API_URL, sizeof(api));
+        api[sizeof(api) - 1] = 0;
+    }
+
+    if (cfg_save_settings(hb, loc, in1, api) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Save settings failed");
         return ESP_FAIL;
     }
@@ -1006,17 +1081,54 @@ static esp_err_t http_queue_get(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    char qs[64];
+    char only_unsent_val[8];
+    char cleanup_val[8];
+    bool only_unsent = false;
+    bool do_cleanup = false;
+    if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) == ESP_OK) {
+        if (httpd_query_key_value(qs, "unsent", only_unsent_val, sizeof(only_unsent_val)) == ESP_OK) {
+            only_unsent = (strcmp(only_unsent_val, "1") == 0);
+        }
+        if (httpd_query_key_value(qs, "cleanup", cleanup_val, sizeof(cleanup_val)) == ESP_OK) {
+            do_cleanup = (strcmp(cleanup_val, "1") == 0);
+        }
+    }
+
     if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Queue busy");
         return ESP_FAIL;
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h);
+    esp_err_t err = nvs_open(NYS_QUEUE_NS, do_cleanup ? NVS_READWRITE : NVS_READONLY, &h);
     if (err != ESP_OK) {
         xSemaphoreGive(s_queue_mutex);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS open failed");
         return ESP_FAIL;
+    }
+
+    if (do_cleanup) {
+        uint32_t purged = 0;
+        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
+            nys_queue_rec_t rec;
+            if (!queue_load_rec_locked(h, i, &rec)) {
+                continue;
+            }
+            if (rec.sent) {
+                queue_delete_rec_locked(h, i);
+                purged++;
+            }
+        }
+        (void)nvs_commit(h);
+        nvs_close(h);
+        err = nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h);
+        if (err != ESP_OK) {
+            xSemaphoreGive(s_queue_mutex);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS reopen failed");
+            return ESP_FAIL;
+        }
+        ESP_LOGI(TAG, "Queue cleanup via HTTP: purged %u sent records", (unsigned)purged);
     }
 
     cJSON *root = cJSON_CreateObject();
@@ -1025,11 +1137,23 @@ static esp_err_t http_queue_get(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "next_seq", (double)s_queue_next_seq);
     cJSON_AddNumberToObject(root, "widx", (double)s_queue_widx);
 
+    uint32_t sent_count = 0;
+    uint32_t unsent_count = 0;
+
     if (items) {
         for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
             nys_queue_rec_t rec;
             if (!queue_load_rec_locked(h, i, &rec)) {
                 continue;
+            }
+
+            if (rec.sent) {
+                sent_count++;
+                if (only_unsent) {
+                    continue;
+                }
+            } else {
+                unsent_count++;
             }
 
             cJSON *it = cJSON_CreateObject();
@@ -1061,6 +1185,12 @@ static esp_err_t http_queue_get(httpd_req_t *req)
 
             cJSON_AddItemToArray(items, it);
         }
+    }
+
+    cJSON_AddNumberToObject(root, "sent_count", (double)sent_count);
+    cJSON_AddNumberToObject(root, "unsent_count", (double)unsent_count);
+    if (only_unsent) {
+        cJSON_AddBoolToObject(root, "only_unsent", true);
     }
 
     nvs_close(h);
@@ -1114,7 +1244,7 @@ static httpd_handle_t start_setup_webserver(void)
     return server;
 }
 
-static void stop_setup_webserver(void)
+static void __attribute__((unused)) stop_setup_webserver(void)
 {
     if (s_setup_httpd) {
         httpd_stop(s_setup_httpd);
@@ -1155,7 +1285,6 @@ static void ap_stop_portal(void)
         return;
     }
 
-    stop_setup_webserver();
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     s_ap_running = false;
     ESP_LOGI(TAG, "Setup AP stopped");
@@ -1499,6 +1628,8 @@ static void queue_init(void)
     if (s_queue_widx >= NYS_QUEUE_SIZE) {
         s_queue_widx = 0;
     }
+
+    (void)queue_purge_sent();
 }
 
 static void queue_save_meta_locked(nvs_handle_t h)
@@ -1612,15 +1743,77 @@ static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t 
     return false;
 }
 
-static void queue_mark_sent_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *rec)
+static uint32_t queue_count_unsent(void)
 {
-    if (rec == NULL) {
-        return;
+    if (s_queue_mutex == NULL) {
+        return 0;
     }
-    rec->sent = 1;
+
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+        return 0;
+    }
+
+    nvs_handle_t h;
+    uint32_t count = 0;
+    if (nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
+        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
+            nys_queue_rec_t cur;
+            if (!queue_load_rec_locked(h, i, &cur)) {
+                continue;
+            }
+            if (!cur.sent) {
+                count++;
+            }
+        }
+        nvs_close(h);
+    }
+
+    xSemaphoreGive(s_queue_mutex);
+    return count;
+}
+
+static void queue_delete_rec_locked(nvs_handle_t h, uint32_t idx)
+{
     char key[8];
     queue_key_for_idx(key, idx);
-    (void)nvs_set_blob(h, key, rec, sizeof(*rec));
+    (void)nvs_erase_key(h, key);
+}
+
+static uint32_t queue_purge_sent(void)
+{
+    if (s_queue_mutex == NULL) {
+        return 0;
+    }
+
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        return 0;
+    }
+
+    nvs_handle_t h;
+    uint32_t purged = 0;
+    if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
+        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
+            nys_queue_rec_t rec;
+            if (!queue_load_rec_locked(h, i, &rec)) {
+                continue;
+            }
+            if (rec.sent) {
+                queue_delete_rec_locked(h, i);
+                purged++;
+            }
+        }
+        if (purged > 0) {
+            queue_save_meta_locked(h);
+            (void)nvs_commit(h);
+        }
+        nvs_close(h);
+    }
+
+    xSemaphoreGive(s_queue_mutex);
+    if (purged > 0) {
+        ESP_LOGI(TAG, "Queue purge: removed %u sent records", (unsigned)purged);
+    }
+    return purged;
 }
 
 static void queue_drain_step(void)
@@ -1669,6 +1862,8 @@ static void queue_drain_step(void)
         return;
     }
 
+    ESP_LOGI(TAG, "Queue drain: sending idx=%u seq=%u", (unsigned)best_idx, (unsigned)best.seq);
+
     nvs_close(h);
     xSemaphoreGive(s_queue_mutex);
 
@@ -1677,9 +1872,10 @@ static void queue_drain_step(void)
             if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
                 nys_queue_rec_t to_update;
                 if (queue_load_rec_locked(h, best_idx, &to_update) && to_update.seq == best.seq) {
-                    queue_mark_sent_locked(h, best_idx, &to_update);
+                    queue_delete_rec_locked(h, best_idx);
                     queue_save_meta_locked(h);
                     (void)nvs_commit(h);
+                    ESP_LOGI(TAG, "Queue drain: deleted idx=%u seq=%u", (unsigned)best_idx, (unsigned)best.seq);
                 }
                 nvs_close(h);
             }
@@ -1693,6 +1889,8 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     if (cfg == NULL || rec == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -1731,11 +1929,12 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     }
 
     esp_http_client_config_t http_cfg = {
-        .url = NYS_API_URL,
+        .url = url,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 10000,
         .disable_auto_redirect = false,
         .keep_alive_enable = false,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
@@ -1749,11 +1948,27 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
     esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
+    esp_http_client_set_header(client, "X-DEVICE-KEY", cfg->device_key);
     esp_http_client_set_post_field(client, json, (int)strlen(json));
 
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
+
+    if (status > 0 && (status < 200 || status >= 300)) {
+        char resp[512];
+        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
+        if (r >= 0) {
+            resp[r] = 0;
+            if (r > 0) {
+                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
+            }
+        }
+    }
+
     if (err == ESP_OK) {
+        if (status < 200 || status >= 300) {
+            err = ESP_FAIL;
+        }
         ESP_LOGI(TAG, "POST status=%d", status);
     } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
         ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);

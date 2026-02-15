@@ -116,15 +116,19 @@
                   min="1"
                   v-model.number="qtyById[p.id]"
                 />
-                <button class="button-success" @click="addToCart(p)">Add</button>
-                <button v-if="isPrivileged" class="button-info" @click="openEdit(p)">Edit</button>
+                <button class="button-success" @click="addToCart(p)">
+                  <i class="bi bi-cart-plus"></i>
+                </button>
+                <button v-if="isPrivileged" class="button-info" @click="openEdit(p)">
+                  <i class="bi bi-pencil-square"></i>
+                </button>
               </div>
 
               <div class="small mt-2" v-if="p.stock_level <= 0" style="color:#ffb3b3; font-weight:600">
                 Out of stock
               </div>
               <div class="small mt-2" v-else>
-                Stock: {{ p.stock_level }}
+                Avilable: {{ p.stock_level }}
               </div>
             </div>
           </div>

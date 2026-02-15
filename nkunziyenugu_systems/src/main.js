@@ -26,6 +26,16 @@ router.beforeEach((to, from, next) => {
   const role = account?.pivot?.role || null
   // console.log('Navigating to:', to.name, 'with role:', role)
 
+  if (token && String(role || '').toLowerCase() === 'customer') {
+    if (to.meta.guestOnly) {
+      return next('/Customer/Credit')
+    }
+
+    if (to.path === '/') {
+      return next('/Customer/Credit')
+    }
+  }
+
   // Guest blocked from protected routes
   if (!token && to.meta.requiresAuth) {
     return next('/LogIn')

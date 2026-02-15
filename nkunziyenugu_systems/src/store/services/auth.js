@@ -67,6 +67,7 @@ export default {
     isSuperAdmin: (state, getters) => getters.normalizedRole === 'superadmin' || getters.normalizedRole === 'super_admin',
     isOwner: (state, getters) => getters.normalizedRole === 'owner',
     isAdmin: (state, getters) => getters.normalizedRole === 'admin',
-    isViewer: (state, getters) => getters.normalizedRole === 'viewer'
+    isViewer: (state, getters) => getters.normalizedRole === 'viewer',
+    isCustomer: (state, getters) => getters.normalizedRole === 'customer'
   }
 }

@@ -4,7 +4,7 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="m-0">Cash Flow</h4>
         <div class="d-flex gap-2">
-          <button class="button-info" @click="fetch">Load</button>
+          <!-- <button class="button-info" @click="fetch">Load</button> -->
           <button v-if="isPrivileged" class="button-success" @click="openCreate">Add</button>
         </div>
       </div>
@@ -12,11 +12,11 @@
       <div class="row g-2 mt-2">
         <div class="col-12 col-md-4">
           <label class="form-label">From</label>
-          <input class="form-control form-control-sm" type="date" v-model="from" />
+          <input class="form-control form-control-sm" type="date" v-model="from" @change="fetch"/>
         </div>
         <div class="col-12 col-md-4">
           <label class="form-label">To</label>
-          <input class="form-control form-control-sm" type="date" v-model="to" />
+          <input class="form-control form-control-sm" type="date" v-model="to" @change="fetch"/>
         </div>
         <div class="col-12 col-md-4 d-flex align-items-end">
           <div class="fw-bold">Turnover: R {{ formatMoney(turnover) }}</div>
@@ -48,6 +48,7 @@
           <select class="form-control form-control-sm" v-model="form.payment_type">
             <option value="">-</option>
             <option value="Cash">Cash</option>
+            <option value="Cash Deposit">Cash Deposit</option>
             <option value="Card">Card</option>
             <option value="EFT">EFT</option>
             <option value="Other">Other</option>
@@ -66,8 +67,12 @@
           <input class="form-control form-control-sm" v-model="form.notes" type="text" />
         </div>
         <div class="col-12 d-flex gap-2 mt-1">
-          <button class="button-success" :disabled="saving" @click="save">{{ saving ? 'Saving...' : 'Save' }}</button>
-          <button v-if="form.id" class="button-danger" :disabled="saving" @click="remove(form.id)">Delete</button>
+          <button class="button-success" :disabled="saving" @click="save">
+            <i class="bi bi-save"></i>
+          </button>
+          <button v-if="form.id" class="button-danger" :disabled="saving" @click="remove(form.id)">
+            <i class="bi bi-trash"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -83,6 +88,8 @@
             <th>Payment</th>
             <th>Amount</th>
             <th>Date</th>
+            <th>Created By</th>
+            <th>Updated By</th>
             <th v-if="isPrivileged"></th>
           </tr>
         </thead>
@@ -92,9 +99,16 @@
             <td>{{ r.transaction_type }}</td>
             <td>{{ r.payment_type || '-' }}</td>
             <td>R {{ formatMoney(r.amount) }}</td>
-            <td>{{ r.date }}</td>
+            <td>{{ formatDateTime(r.date || r.created_at) }}</td>
+            <td>{{ formatUser(r.user) }}</td>
+            <td>{{ formatUser(r.updatedBy || r.updated_by) }}</td>
             <td v-if="isPrivileged" style="width: 1%; white-space: nowrap">
-              <button class="button-info" @click="openEdit(r)">Edit</button>
+              <button class="button-info" @click="openEdit(r)">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="button-danger" @click="remove(r.id)">
+                <i class="bi bi-trash"></i>
+              </button>
             </td>
           </tr>
         </tbody>
@@ -148,10 +162,28 @@ export default {
     this.fetch()
   },
   methods: {
+    formatUser(u) {
+      if (!u) return '-'
+      const name = String(u.name || '').trim()
+      const surname = String(u.surname || '').trim()
+      return `${name} ${surname}`.trim() || '-'
+    },
     formatMoney(v) {
       const n = Number(v)
       if (Number.isNaN(n)) return '0.00'
       return n.toFixed(2)
+    },
+    formatDateTime(v) {
+      if (!v) return '-'
+      const d = new Date(v)
+      if (Number.isNaN(d.getTime())) return String(v)
+      const yyyy = d.getFullYear()
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mi = String(d.getMinutes()).padStart(2, '0')
+      const ss = String(d.getSeconds()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
     },
     resetForm() {
       this.form = {

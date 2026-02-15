@@ -20,6 +20,8 @@
             <option value="">All Models</option>
             <option value="App\Models\User">User</option>
             <option value="App\Models\Account">Account</option>
+            <option value="App\Models\ShopCashflow">ShopCashflow</option>
+            <option value="App\Models\ShopPosSale">ShopPosSale</option>
           </select>
         </div>
 

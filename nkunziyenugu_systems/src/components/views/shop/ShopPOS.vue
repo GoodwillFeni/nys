@@ -4,7 +4,9 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="m-0">POS (Cashier)</h4>
         <div class="d-flex align-items-center gap-2">
-          <button class="button-info" @click="refresh">Refresh</button>
+          <button class="button-info" @click="refresh">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
           <button class="button-success" :disabled="checkoutDisabled" @click="checkout">
             Checkout (R {{ formatMoney(cartTotal) }})
           </button>
@@ -53,7 +55,7 @@
                       min="1"
                       v-model.number="qtyById[p.id]"
                     />
-                    <button class="button-success" @click="addItem(p)">Add</button>
+                    <button class="button-success" @click="addItem(p)"><i class="bi bi-cart-plus"></i></button>
                   </div>
                 </td>
               </tr>
@@ -94,7 +96,7 @@
                   </td>
                   <td>R {{ formatMoney(it.total_price) }}</td>
                   <td>
-                    <button class="button-danger" @click="remove(it)">X</button>
+                    <button class="button-danger" @click="remove(it)"><i class="bi bi-cart-x"></i></button>
                   </td>
                 </tr>
               </tbody>
@@ -108,7 +110,16 @@
 
             <div class="row g-2 mt-2" v-if="cartItems.length > 0">
               <div class="col-12 col-md-7">
-                <label class="form-label">Amount given (cash)</label>
+                <label class="form-label">Payment method</label>
+                <select class="form-control form-control-sm" v-model="paymentMethod">
+                  <option value="Cash">Cash</option>
+                  <option value="Cash Deposit">Cash Deposit</option>
+                  <option value="Credit">Credit</option>
+                </select>
+              </div>
+
+              <div class="col-12 col-md-7" v-if="requiresCashAmount">
+                <label class="form-label">Amount given</label>
                 <input
                   class="form-control form-control-sm"
                   type="number"
@@ -121,14 +132,73 @@
                   {{ amountGivenWarning }}
                 </div>
               </div>
-              <div class="col-12 col-md-5 d-flex align-items-end justify-content-end">
+
+              <div class="col-12 col-md-5 d-flex align-items-end justify-content-end" v-if="requiresCashAmount">
                 <div class="fw-bold">Change: R {{ formatMoney(changeAmount) }}</div>
+              </div>
+
+              <div class="col-12" v-if="creditWarning">
+                <div class="small mt-1" style="color:#ffb3b3; font-weight:600">
+                  {{ creditWarning }}
+                </div>
               </div>
             </div>
 
-            <div class="mt-3">
+            <div class="mt-3" v-if="paymentMethod !== 'Credit'">
               <label class="form-label">Customer name (optional)</label>
               <input class="form-control form-control-sm" v-model="customerName" placeholder="Walk-in customer" />
+            </div>
+
+            <div class="mt-3" v-else>
+              <div class="fw-bold mb-2">Credit Customer</div>
+
+              <div class="row g-2">
+                <div class="col-12">
+                  <label class="form-label">Search customer</label>
+                  <input
+                    class="form-control form-control-sm"
+                    v-model="customerSearch"
+                    placeholder="Type name or phone"
+                    @input="onCustomerSearch"
+                  />
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Select customer</label>
+                  <select class="form-control form-control-sm" v-model="selectedCustomerId">
+                    <option value="" disabled>Choose</option>
+                    <option v-for="c in customerResults" :key="c.id" :value="c.id">
+                      {{ c.name }} - {{ c.phone }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mt-3" v-if="!selectedCustomerId">
+                <div class="fw-bold mb-2">Or create new customer</div>
+                <div class="row g-2">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Name</label>
+                    <input class="form-control form-control-sm" v-model="newCustomer.name" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Phone</label>
+                    <input class="form-control form-control-sm" v-model="newCustomer.phone" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Email (optional)</label>
+                    <input class="form-control form-control-sm" v-model="newCustomer.email" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <label class="form-label">Password</label>
+                    <input class="form-control form-control-sm" type="password" v-model="newCustomer.password" />
+                  </div>
+                  <div class="col-12">
+                    <button class="button-success" :disabled="creatingCustomer" @click="createCustomer">
+                      {{ creatingCustomer ? 'Creating...' : 'Create Customer' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -155,8 +225,20 @@ export default {
       loadingCart: false,
       cart: null,
       customerName: '',
+      paymentMethod: 'Cash',
       checkingOut: false,
       amountGiven: null,
+
+      customerSearch: '',
+      customerResults: [],
+      selectedCustomerId: null,
+      creatingCustomer: false,
+      newCustomer: {
+        name: '',
+        phone: '',
+        email: '',
+        password: '',
+      },
     }
   },
   computed: {
@@ -173,12 +255,22 @@ export default {
     },
     changeAmount() {
       const given = Number(this.amountGiven)
+      if (!this.requiresCashAmount) return 0
       if (!this.amountGiven && this.amountGiven !== 0) return 0
       if (Number.isNaN(given)) return 0
       if (given < this.cartTotal) return 0
       return given - this.cartTotal
     },
+    requiresCashAmount() {
+      return this.paymentMethod !== 'Credit'
+    },
+    creditWarning() {
+      if (this.paymentMethod !== 'Credit') return null
+      if (!this.selectedCustomerId) return 'Customer is required for Credit sales.'
+      return null
+    },
     amountGivenWarning() {
+      if (!this.requiresCashAmount) return null
       const given = Number(this.amountGiven)
       if (!this.amountGiven && this.amountGiven !== 0) return null
       if (Number.isNaN(given)) return 'Enter a valid amount.'
@@ -187,8 +279,11 @@ export default {
     },
     checkoutDisabled() {
       if (this.checkingOut || this.cartItems.length === 0) return true
+
+      if (this.paymentMethod === 'Credit') return !this.selectedCustomerId
+
       const given = Number(this.amountGiven)
-      if (!this.amountGiven && this.amountGiven !== 0) return false
+      if (!this.amountGiven && this.amountGiven !== 0) return true
       if (Number.isNaN(given)) return true
       return given < this.cartTotal
     }
@@ -289,24 +384,92 @@ export default {
         return
       }
 
-      if (this.amountGivenWarning) {
-        this.error = this.amountGivenWarning
-        return
+      if (this.paymentMethod === 'Credit') {
+        if (!this.selectedCustomerId) {
+          this.error = 'Please select or create a customer for Credit sales.'
+          return
+        }
+      } else {
+        if (this.amountGivenWarning) {
+          this.error = this.amountGivenWarning
+          return
+        }
+        if (!this.amountGiven && this.amountGiven !== 0) {
+          this.error = 'Please enter the amount given.'
+          return
+        }
       }
 
       this.checkingOut = true
       try {
-        const res = await api.post('/shop/pos/checkout', { customer_name: this.customerName || null })
+        const selectedCustomerId = this.selectedCustomerId ? Number(this.selectedCustomerId) : null
+        const res = await api.post('/shop/pos/checkout', {
+          customer_name: this.customerName || null,
+          customer_id: this.paymentMethod === 'Credit' ? selectedCustomerId : null,
+          payment_method: this.paymentMethod,
+          amount_received: this.requiresCashAmount ? (this.amountGiven == null ? null : Number(this.amountGiven)) : null,
+        })
         const saleId = res.data?.data?.id
+        const isPaid = !!res.data?.data?.is_paid
         this.customerName = ''
+        this.customerSearch = ''
+        this.customerResults = []
+        this.selectedCustomerId = ''
         this.amountGiven = null
-        this.success = `POS checkout completed${saleId ? ` (Sale #${saleId})` : ''}.`
+        this.success = isPaid
+          ? `POS checkout completed${saleId ? ` (Sale #${saleId})` : ''}.`
+          : `Credit sale created${saleId ? ` (Sale #${saleId})` : ''}. Payment pending.`
         await this.fetchCart()
         await this.fetchProducts()
       } catch (e) {
         this.error = e?.response?.data?.message || e.message || 'Checkout failed'
       } finally {
         this.checkingOut = false
+      }
+    }
+    ,
+    async onCustomerSearch() {
+      if (this.paymentMethod !== 'Credit') return
+      const s = String(this.customerSearch || '').trim()
+      if (!s) {
+        this.customerResults = []
+        return
+      }
+
+      try {
+        const res = await api.get('/shop/customers', { params: { search: s } })
+        this.customerResults = res.data?.data || []
+      } catch (e) {
+        this.error = e?.response?.data?.message || e.message || 'Failed to search customers'
+      }
+    },
+    async createCustomer() {
+      if (this.paymentMethod !== 'Credit') return
+
+      const name = String(this.newCustomer.name || '').trim()
+      const phone = String(this.newCustomer.phone || '').trim()
+      const email = String(this.newCustomer.email || '').trim() || null
+      const password = String(this.newCustomer.password || '')
+
+      if (!name || !phone || !password) {
+        this.error = 'Name, phone and password are required.'
+        return
+      }
+
+      this.creatingCustomer = true
+      this.error = null
+      try {
+        const res = await api.post('/shop/customers', { name, phone, email, password })
+        const c = res.data?.data
+        if (c?.id) {
+          this.selectedCustomerId = c.id
+          this.customerResults = [c, ...this.customerResults.filter(x => x.id !== c.id)]
+          this.newCustomer = { name: '', phone: '', email: '', password: '' }
+        }
+      } catch (e) {
+        this.error = e?.response?.data?.message || e.message || 'Failed to create customer'
+      } finally {
+        this.creatingCustomer = false
       }
     }
   }
@@ -364,5 +527,18 @@ export default {
 
 .text-muted {
   color: rgba(255, 255, 255, 0.7) !important;
+}
+
+select.form-control {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+select.form-control option {
+  background-color: #27253f;
+  color: #fff;
 }
 </style>

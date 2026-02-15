@@ -73,13 +73,27 @@ class AuthController extends Controller
     public function login(Request $request)
         {
             $request->validate([
-                'email'    => 'required|email',
+                'login'    => 'nullable|string',
+                'email'    => 'nullable|string',
                 'password' => 'required',
             ]);
 
-            $user = User::where('email', $request->email)
-                        ->where('deleted_flag', 0)
-                        ->first();
+            $login = (string) ($request->login ?? $request->email ?? '');
+            $login = trim($login);
+
+            if ($login === '') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Login is required',
+                ], 422);
+            }
+
+            $user = User::query()
+                ->where('deleted_flag', 0)
+                ->where(function ($q) use ($login) {
+                    $q->where('email', $login)->orWhere('phone', $login);
+                })
+                ->first();
 
             if (!$user || !Hash::check($request->password, $user->password_hash)) {
                 return response()->json([

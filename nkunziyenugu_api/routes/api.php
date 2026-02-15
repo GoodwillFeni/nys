@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\ShopProductController;
 use App\Http\Controllers\Api\ShopOrderController;
 use App\Http\Controllers\Api\ShopPosController;
 use App\Http\Controllers\Api\ShopCashflowController;
+use App\Http\Controllers\Api\ShopCustomerController;
+use App\Http\Controllers\Api\ShopCustomerPortalController;
+use App\Http\Controllers\Api\ShopCreditRequestController;
 
 Route::post('/register', [AuthController::class, 'register']); //Route for registering a new user
 Route::post('/login', [AuthController::class, 'login']); //Route for logging in a user
@@ -67,8 +70,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/shop/pos/cart/items/{item}', [ShopPosController::class, 'updateItem']);
     Route::delete('/shop/pos/cart/items/{item}', [ShopPosController::class, 'removeItem']);
     Route::post('/shop/pos/checkout', [ShopPosController::class, 'checkout']);
+    Route::put('/shop/pos/sales/{sale}', [ShopPosController::class, 'updateSale']);
+    Route::post('/shop/pos/sales/{sale}/mark-paid', [ShopPosController::class, 'markSalePaid']);
     Route::get('/shop/pos/sales-report', [ShopPosController::class, 'salesReport']);
     Route::put('/shop/pos/sale-items/{item}', [ShopPosController::class, 'updateSaleItem']);
+
+    // Shop - Customers (privileged roles only; enforced in controller)
+    Route::get('/shop/customers', [ShopCustomerController::class, 'index']);
+    Route::post('/shop/customers', [ShopCustomerController::class, 'store']);
+
+    // Shop - Customer Portal (Customer role; enforced in controller)
+    Route::get('/shop/customer/me', [ShopCustomerPortalController::class, 'me']);
+    Route::get('/shop/customer/credit', [ShopCustomerPortalController::class, 'credit']);
+    Route::get('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'myCreditRequests']);
+    Route::post('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'requestCredit']);
+
+    // Shop - Credit Requests (privileged roles only; enforced in controller)
+    Route::get('/shop/credit-requests', [ShopCreditRequestController::class, 'index']);
+    Route::post('/shop/credit-requests/{creditRequest}/approve', [ShopCreditRequestController::class, 'approve']);
+    Route::post('/shop/credit-requests/{creditRequest}/decline', [ShopCreditRequestController::class, 'decline']);
 
     // Shop - Cashflow (privileged roles only; enforced in controller)
     Route::get('/shop/cashflow', [ShopCashflowController::class, 'index']);

@@ -14,6 +14,21 @@
          </div>
 
          <div class="form-group filter-field">
+          <label for="perPage">Rows</label>
+            <select v-model.number="pagination.per_page" class="form-control" id="perPage" @change="applyFilters">
+              <option :value="10">10</option>
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+              <option :value="200">200</option>
+              <option :value="500">500</option>
+              <option :value="1000">1000</option>
+              <option :value="2000">2000</option>
+              <option :value="5000">5000</option>
+            </select>
+         </div>
+
+         <div class="form-group filter-field">
           <label for="from">From</label>
           <input v-model="filters.from" type="datetime-local" step="1" class="form-control" placeholder="From" />
          </div>
@@ -65,7 +80,8 @@
             <td>{{ formatDate(log.created_at) }}</td>
             <td>
               <button class="button-info" @click="togglePayload(log.id)">
-                {{ expandedPayloadId === log.id ? 'Hide' : 'View' }}
+                <i v-if="expandedPayloadId === log.id" class="bi bi-eye-slash"></i>
+                <i v-else class="bi bi-eye"></i>
               </button>
             </td>
           </tr>
@@ -331,6 +347,7 @@ export default {
       this.filters.type = "";
       this.setDefaultDateRange();
       this.pagination.page = 1;
+      this.pagination.per_page = 20;
       this.fetchLogs();
     },
     goToPage(page) {

@@ -44,7 +44,7 @@
             <td>R {{ formatMoney(i.unit_price) }}</td>
             <td>R {{ formatMoney(lineTotal(i)) }}</td>
             <td>
-              <button class="button-danger" @click="removeItem(i.product_id)">Remove</button>
+              <button class="button-danger" @click="removeItem(i.product_id)"><i class="bi bi-cart-x"></i></button>
             </td>
           </tr>
         </tbody>
@@ -139,10 +139,26 @@ export default {
 
 .table {
   color: #fff;
+  background: transparent;
 }
 
 .table th,
 .table td {
   color: #fff;
+}
+
+.table > :not(caption) > * > * {
+  background-color: transparent !important;
+  color: #fff !important;
+}
+
+.form-control {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+}
+
+.form-control::placeholder {
+  color: rgba(255, 255, 255, 0.65) !important;
 }
 </style>

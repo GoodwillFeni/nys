@@ -107,6 +107,20 @@ const routes = [
         component: () => import('../components/views/shop/ShopCashFlow.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
+
+    // Customer Portal
+    {
+        path: '/Customer/Credit',
+        name: 'CustomerCredit',
+        component: () => import('../components/views/customer/CustomerCredit.vue'),
+        meta: { requiresAuth: true, roles: ['Customer'] }
+    },
+    {
+        path: '/Customer/CreditRequests',
+        name: 'CustomerCreditRequests',
+        component: () => import('../components/views/customer/CustomerCreditRequests.vue'),
+        meta: { requiresAuth: true, roles: ['Customer'] }
+    },
     
     // End Protected Routes
 
