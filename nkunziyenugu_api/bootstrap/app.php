@@ -15,8 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
             'check_token_expiry' => \App\Http\Middleware\CheckTokenExpiry::class,
+            'account.access' => \App\Http\Middleware\EnsureAccountAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
+
+    

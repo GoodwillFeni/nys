@@ -39,11 +39,10 @@
 #define TEST_INPUT_GPIO GPIO_NUM_1
 #define TEST_OUTPUT_GPIO GPIO_NUM_2
 
-static const char *TAG = "NYS_ESP";
-#define NYS_API_URL "http://192.168.101.177:8000/api/device/message" //Home
-//#define NYS_API_URL "http://192.168.200.21:8000/api/device/message" //Work
-#define NYS_WIFI_AP_SSID_PREFIX "NYS_"
-#define NYS_WIFI_AP_PASS "Goodwill@123"
+static const char *TAG = "TEST_ESP";
+#define TEST_API_URL "http://192.168.200.21:8000/api/device/message" //Work
+#define TEST_WIFI_AP_SSID_PREFIX "TEST_"
+#define TEST_WIFI_AP_PASS "TEST@123"
  
 typedef struct {
     double lat_deg;
@@ -75,9 +74,9 @@ typedef struct {
     uint32_t heartbeat_interval_s;
     uint32_t location_interval_s;
     char input1_desc[64];
-} nys_cfg_t;
+} TEST_cfg_t;
 
-static nys_cfg_t s_cfg;
+static TEST_cfg_t s_cfg;
 static EventGroupHandle_t s_wifi_event_group;
 static int s_wifi_retry;
 
@@ -89,12 +88,12 @@ static bool s_reboot_scheduled;
 
 #define WIFI_CONNECTED_BIT BIT0
 
-#define NYS_QUEUE_NS "q"
-#define NYS_QUEUE_SIZE 100
-#define NYS_QUEUE_MAGIC 0x4E595331u
+#define TEST_QUEUE_NS "q"
+#define TEST_QUEUE_SIZE 100
+#define TEST_QUEUE_MAGIC 0x4E595331u
 
-#define NYS_TIME_NS "time"
-#define NYS_TIME_VALID_EPOCH_MIN 1700000000
+#define TEST_TIME_NS "time"
+#define TEST_TIME_VALID_EPOCH_MIN 1700000000
 
 typedef struct {
     uint32_t magic;
@@ -109,7 +108,7 @@ typedef struct {
     uint8_t fix;
     uint8_t last_known;
     uint8_t sent;
-} nys_queue_rec_t;
+} TEST_queue_rec_t;
 
 static SemaphoreHandle_t s_queue_mutex;
 static uint32_t s_queue_next_seq;
@@ -120,8 +119,8 @@ static int64_t s_time_base_epoch_s;
 static int64_t s_time_base_uptime_s;
 static bool s_sntp_started;
 
-#define NYS_AP_WINDOW_MS (60000)
-#define NYS_STA_MAX_RETRIES_BEFORE_AP (20)
+#define TEST_AP_WINDOW_MS (60000)
+#define TEST_STA_MAX_RETRIES_BEFORE_AP (20)
 
 static void wifi_ensure_inited(bool need_sta, bool need_ap);
 static void wifi_ensure_started(void);
@@ -130,9 +129,9 @@ static void ap_stop_portal(void);
 static void wifi_start_sta_with_portal_window(const char *ssid, const char *password);
 
 static esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s, uint32_t location_interval_s, const char *input1_desc, const char *api_url);
-static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg);
-static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, bool has_fix);
-static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level);
+static esp_err_t http_send_heartbeat(const TEST_cfg_t *cfg);
+static esp_err_t http_send_location(const TEST_cfg_t *cfg, const gps_fix_t *fix, bool has_fix);
+static esp_err_t http_send_input_change(const TEST_cfg_t *cfg, int level);
 static esp_err_t http_queue_get(httpd_req_t *req);
 
 static void gps_sample_task(void *arg);
@@ -141,9 +140,9 @@ static void queue_push_sample(void);
 static void queue_drain_step(void);
 static uint32_t queue_count_unsent(void);
 static uint32_t queue_purge_sent(void);
-static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out);
+static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, TEST_queue_rec_t *out);
 static void queue_delete_rec_locked(nvs_handle_t h, uint32_t idx);
-static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue_rec_t *rec);
+static esp_err_t http_send_location_record(const TEST_cfg_t *cfg, const TEST_queue_rec_t *rec);
 
 static void time_init(void);
 static void time_try_update_base_from_system(void);
@@ -164,9 +163,9 @@ typedef struct {
     uint8_t fix;
     uint8_t last_known;
     uint8_t sent;
-} nys_queue_rec_v1_t;
+} TEST_queue_rec_v1_t;
 
-static esp_err_t cfg_load(nys_cfg_t *out)
+static esp_err_t cfg_load(TEST_cfg_t *out)
 {
     if (out == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -187,7 +186,7 @@ static esp_err_t cfg_load(nys_cfg_t *out)
     size_t key_len = sizeof(out->device_key);
     out->heartbeat_interval_s = 60;
     out->location_interval_s = 60;
-    strncpy(out->api_url, NYS_API_URL, sizeof(out->api_url));
+    strncpy(out->api_url, TEST_API_URL, sizeof(out->api_url));
     out->api_url[sizeof(out->api_url) - 1] = 0;
     strncpy(out->input1_desc, "Input 1", sizeof(out->input1_desc));
     out->input1_desc[sizeof(out->input1_desc) - 1] = 0;
@@ -282,7 +281,7 @@ static esp_err_t cfg_save_identity(const char *uid, const char *key)
     return err;
 }
 
-static void cfg_ensure_identity(nys_cfg_t *cfg)
+static void cfg_ensure_identity(TEST_cfg_t *cfg)
 {
     if (cfg == NULL) {
         return;
@@ -327,11 +326,11 @@ static void time_init(void)
     s_time_base_uptime_s = 0;
 
     nvs_handle_t h;
-    if (nvs_open(NYS_TIME_NS, NVS_READONLY, &h) == ESP_OK) {
+    if (nvs_open(TEST_TIME_NS, NVS_READONLY, &h) == ESP_OK) {
         int64_t epoch = 0;
         int64_t up = 0;
         if (nvs_get_i64(h, "epoch", &epoch) == ESP_OK && nvs_get_i64(h, "uptime", &up) == ESP_OK) {
-            if (epoch >= NYS_TIME_VALID_EPOCH_MIN && up >= 0) {
+            if (epoch >= TEST_TIME_VALID_EPOCH_MIN && up >= 0) {
                 s_time_has_base = true;
                 s_time_base_epoch_s = epoch;
                 s_time_base_uptime_s = up;
@@ -344,7 +343,7 @@ static void time_init(void)
 static void time_try_update_base_from_system(void)
 {
     time_t now = time(NULL);
-    if ((int64_t)now < NYS_TIME_VALID_EPOCH_MIN) {
+    if ((int64_t)now < TEST_TIME_VALID_EPOCH_MIN) {
         return;
     }
 
@@ -354,7 +353,7 @@ static void time_try_update_base_from_system(void)
     s_time_base_uptime_s = up_s;
 
     nvs_handle_t h;
-    if (nvs_open(NYS_TIME_NS, NVS_READWRITE, &h) == ESP_OK) {
+    if (nvs_open(TEST_TIME_NS, NVS_READWRITE, &h) == ESP_OK) {
         (void)nvs_set_i64(h, "epoch", s_time_base_epoch_s);
         (void)nvs_set_i64(h, "uptime", s_time_base_uptime_s);
         (void)nvs_commit(h);
@@ -445,13 +444,13 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
+static esp_err_t http_send_heartbeat(const TEST_cfg_t *cfg)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : TEST_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -531,13 +530,13 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     return err;
 }
 
-static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, bool has_fix)
+static esp_err_t http_send_location(const TEST_cfg_t *cfg, const gps_fix_t *fix, bool has_fix)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : TEST_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -562,6 +561,7 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     }
 
     cJSON *gps = cJSON_AddObjectToObject(root, "gps");
+    
     if (gps) {
         if (include_gps) {
             cJSON_AddNumberToObject(gps, "lat", to_send.lat_deg);
@@ -641,13 +641,13 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     return err;
 }
 
-static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
+static esp_err_t http_send_input_change(const TEST_cfg_t *cfg, int level)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : TEST_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -770,6 +770,15 @@ static void send_task(void *arg)
         bool do_loc = (last_loc_us == 0) || (now_us - last_loc_us >= loc_int_us);
 
         uint32_t unsent = queue_count_unsent();
+        if (unsent > 0) {
+            if (do_hb) {
+                (void)http_send_heartbeat(&s_cfg);
+                last_hb_us = now_us;
+            }
+            queue_drain_step();
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
         if (unsent > 2) {
             if (unsent != last_backlog_logged || (now_us - last_backlog_log_us) > 10000000LL) {
                 ESP_LOGW(TAG, "Queue backlog %u unsent; draining before live sends", (unsigned)unsent);
@@ -803,7 +812,9 @@ static void send_task(void *arg)
             last_loc_us = now_us;
         }
 
-        queue_drain_step();
+        if (!do_hb && !do_loc) {
+            queue_drain_step();
+        }
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -818,13 +829,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         s_wifi_retry++;
-        if (s_wifi_retry < NYS_STA_MAX_RETRIES_BEFORE_AP) {
-            esp_wifi_connect();
-        } else {
+        if (s_wifi_retry >= TEST_STA_MAX_RETRIES_BEFORE_AP) {
             if (!s_ap_running) {
                 ap_start_portal();
             }
         }
+        esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         s_wifi_retry = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -874,7 +884,7 @@ static void ap_build_ssid(char out_ssid[33])
 {
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
-    snprintf(out_ssid, 33, NYS_WIFI_AP_SSID_PREFIX "%02X%02X%02X%02X%02X%02X",
+    snprintf(out_ssid, 33, TEST_WIFI_AP_SSID_PREFIX "%02X%02X%02X%02X%02X%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
@@ -885,8 +895,8 @@ static esp_err_t http_root_get(httpd_req_t *req)
         html,
         sizeof(html),
         "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>NYS Setup</title></head><body style='font-family:Arial;padding:16px'>"
-        "<h2>NYS WiFi Setup</h2>"
+        "<title>TEST Setup</title></head><body style='font-family:Arial;padding:16px'>"
+        "<h2>TEST WiFi Setup</h2>"
         "<form method='POST' action='/save'>"
         "<label>SSID</label><br><input name='ssid' value='%s' style='width:100%%;padding:8px' /><br><br>"
         "<label>Password</label><br><input name='pass' type='password' value='%s' style='width:100%%;padding:8px' /><br><br>"
@@ -1048,7 +1058,7 @@ static esp_err_t http_save_post(httpd_req_t *req)
     }
 
     if (api[0] == 0) {
-        strncpy(api, NYS_API_URL, sizeof(api));
+        strncpy(api, TEST_API_URL, sizeof(api));
         api[sizeof(api) - 1] = 0;
     }
 
@@ -1101,7 +1111,7 @@ static esp_err_t http_queue_get(httpd_req_t *req)
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NYS_QUEUE_NS, do_cleanup ? NVS_READWRITE : NVS_READONLY, &h);
+    esp_err_t err = nvs_open(TEST_QUEUE_NS, do_cleanup ? NVS_READWRITE : NVS_READONLY, &h);
     if (err != ESP_OK) {
         xSemaphoreGive(s_queue_mutex);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS open failed");
@@ -1110,8 +1120,8 @@ static esp_err_t http_queue_get(httpd_req_t *req)
 
     if (do_cleanup) {
         uint32_t purged = 0;
-        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
-            nys_queue_rec_t rec;
+        for (uint32_t i = 0; i < TEST_QUEUE_SIZE; i++) {
+            TEST_queue_rec_t rec;
             if (!queue_load_rec_locked(h, i, &rec)) {
                 continue;
             }
@@ -1122,7 +1132,7 @@ static esp_err_t http_queue_get(httpd_req_t *req)
         }
         (void)nvs_commit(h);
         nvs_close(h);
-        err = nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h);
+        err = nvs_open(TEST_QUEUE_NS, NVS_READONLY, &h);
         if (err != ESP_OK) {
             xSemaphoreGive(s_queue_mutex);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS reopen failed");
@@ -1133,7 +1143,7 @@ static esp_err_t http_queue_get(httpd_req_t *req)
 
     cJSON *root = cJSON_CreateObject();
     cJSON *items = cJSON_AddArrayToObject(root, "items");
-    cJSON_AddNumberToObject(root, "capacity", NYS_QUEUE_SIZE);
+    cJSON_AddNumberToObject(root, "capacity", TEST_QUEUE_SIZE);
     cJSON_AddNumberToObject(root, "next_seq", (double)s_queue_next_seq);
     cJSON_AddNumberToObject(root, "widx", (double)s_queue_widx);
 
@@ -1141,8 +1151,8 @@ static esp_err_t http_queue_get(httpd_req_t *req)
     uint32_t unsent_count = 0;
 
     if (items) {
-        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
-            nys_queue_rec_t rec;
+        for (uint32_t i = 0; i < TEST_QUEUE_SIZE; i++) {
+            TEST_queue_rec_t rec;
             if (!queue_load_rec_locked(h, i, &rec)) {
                 continue;
             }
@@ -1259,11 +1269,11 @@ static void ap_start_portal(void)
 
     wifi_config_t ap_cfg = { 0 };
     strncpy((char *)ap_cfg.ap.ssid, ap_ssid, sizeof(ap_cfg.ap.ssid));
-    strncpy((char *)ap_cfg.ap.password, NYS_WIFI_AP_PASS, sizeof(ap_cfg.ap.password));
+    strncpy((char *)ap_cfg.ap.password, TEST_WIFI_AP_PASS, sizeof(ap_cfg.ap.password));
     ap_cfg.ap.ssid_len = (uint8_t)strlen(ap_ssid);
     ap_cfg.ap.max_connection = 4;
     ap_cfg.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-    if (strlen(NYS_WIFI_AP_PASS) == 0) {
+    if (strlen(TEST_WIFI_AP_PASS) == 0) {
         ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
     }
 
@@ -1286,6 +1296,8 @@ static void ap_stop_portal(void)
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    s_wifi_retry = 0;
+    esp_wifi_connect();
     s_ap_running = false;
     ESP_LOGI(TAG, "Setup AP stopped");
 }
@@ -1293,7 +1305,7 @@ static void ap_stop_portal(void)
 static void ap_window_task(void *arg)
 {
     (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(NYS_AP_WINDOW_MS));
+    vTaskDelay(pdMS_TO_TICKS(TEST_AP_WINDOW_MS));
     ap_stop_portal();
     vTaskDelete(NULL);
 }
@@ -1616,7 +1628,7 @@ static void queue_init(void)
     s_queue_widx = 0;
 
     nvs_handle_t h;
-    if (nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
+    if (nvs_open(TEST_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
         (void)nvs_get_u32(h, "seq", &s_queue_next_seq);
         (void)nvs_get_u32(h, "widx", &s_queue_widx);
         nvs_close(h);
@@ -1625,7 +1637,7 @@ static void queue_init(void)
     if (s_queue_next_seq == 0) {
         s_queue_next_seq = 1;
     }
-    if (s_queue_widx >= NYS_QUEUE_SIZE) {
+    if (s_queue_widx >= TEST_QUEUE_SIZE) {
         s_queue_widx = 0;
     }
 
@@ -1654,7 +1666,7 @@ static void queue_push_sample(void)
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h);
+    esp_err_t err = nvs_open(TEST_QUEUE_NS, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         xSemaphoreGive(s_queue_mutex);
         return;
@@ -1668,8 +1680,8 @@ static void queue_push_sample(void)
         fresh = age_us < 5000000;
     }
 
-    nys_queue_rec_t rec = { 0 };
-    rec.magic = NYS_QUEUE_MAGIC;
+    TEST_queue_rec_t rec = { 0 };
+    rec.magic = TEST_QUEUE_MAGIC;
     rec.seq = s_queue_next_seq++;
     rec.ts_s = now_s;
     rec.queued_at_epoch_s = time_now_epoch_s();
@@ -1693,7 +1705,7 @@ static void queue_push_sample(void)
     queue_key_for_idx(key, s_queue_widx);
     (void)nvs_set_blob(h, key, &rec, sizeof(rec));
 
-    s_queue_widx = (s_queue_widx + 1) % NYS_QUEUE_SIZE;
+    s_queue_widx = (s_queue_widx + 1) % TEST_QUEUE_SIZE;
     queue_save_meta_locked(h);
     (void)nvs_commit(h);
     nvs_close(h);
@@ -1701,7 +1713,7 @@ static void queue_push_sample(void)
     xSemaphoreGive(s_queue_mutex);
 }
 
-static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out)
+static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, TEST_queue_rec_t *out)
 {
     if (out == NULL) {
         return false;
@@ -1714,15 +1726,15 @@ static bool queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t 
         return false;
     }
     if (len == sizeof(*out)) {
-        if (out->magic != NYS_QUEUE_MAGIC) {
+        if (out->magic != TEST_QUEUE_MAGIC) {
             return false;
         }
         return true;
     }
-    if (len == sizeof(nys_queue_rec_v1_t)) {
-        nys_queue_rec_v1_t v1;
+    if (len == sizeof(TEST_queue_rec_v1_t)) {
+        TEST_queue_rec_v1_t v1;
         memcpy(&v1, out, sizeof(v1));
-        if (v1.magic != NYS_QUEUE_MAGIC) {
+        if (v1.magic != TEST_QUEUE_MAGIC) {
             return false;
         }
         memset(out, 0, sizeof(*out));
@@ -1755,9 +1767,9 @@ static uint32_t queue_count_unsent(void)
 
     nvs_handle_t h;
     uint32_t count = 0;
-    if (nvs_open(NYS_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
-        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
-            nys_queue_rec_t cur;
+    if (nvs_open(TEST_QUEUE_NS, NVS_READONLY, &h) == ESP_OK) {
+        for (uint32_t i = 0; i < TEST_QUEUE_SIZE; i++) {
+            TEST_queue_rec_t cur;
             if (!queue_load_rec_locked(h, i, &cur)) {
                 continue;
             }
@@ -1791,9 +1803,9 @@ static uint32_t queue_purge_sent(void)
 
     nvs_handle_t h;
     uint32_t purged = 0;
-    if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
-        for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
-            nys_queue_rec_t rec;
+    if (nvs_open(TEST_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
+        for (uint32_t i = 0; i < TEST_QUEUE_SIZE; i++) {
+            TEST_queue_rec_t rec;
             if (!queue_load_rec_locked(h, i, &rec)) {
                 continue;
             }
@@ -1831,7 +1843,7 @@ static void queue_drain_step(void)
     }
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h);
+    esp_err_t err = nvs_open(TEST_QUEUE_NS, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         xSemaphoreGive(s_queue_mutex);
         return;
@@ -1839,10 +1851,10 @@ static void queue_drain_step(void)
 
     uint32_t best_idx = UINT32_MAX;
     uint32_t best_seq = 0;
-    nys_queue_rec_t best = { 0 };
+    TEST_queue_rec_t best = { 0 };
 
-    for (uint32_t i = 0; i < NYS_QUEUE_SIZE; i++) {
-        nys_queue_rec_t cur;
+    for (uint32_t i = 0; i < TEST_QUEUE_SIZE; i++) {
+        TEST_queue_rec_t cur;
         if (!queue_load_rec_locked(h, i, &cur)) {
             continue;
         }
@@ -1869,8 +1881,8 @@ static void queue_drain_step(void)
 
     if (http_send_location_record(&s_cfg, &best) == ESP_OK) {
         if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-            if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
-                nys_queue_rec_t to_update;
+            if (nvs_open(TEST_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
+                TEST_queue_rec_t to_update;
                 if (queue_load_rec_locked(h, best_idx, &to_update) && to_update.seq == best.seq) {
                     queue_delete_rec_locked(h, best_idx);
                     queue_save_meta_locked(h);
@@ -1884,13 +1896,13 @@ static void queue_drain_step(void)
     }
 }
 
-static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue_rec_t *rec)
+static esp_err_t http_send_location_record(const TEST_cfg_t *cfg, const TEST_queue_rec_t *rec)
 {
     if (cfg == NULL || rec == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
+    const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : TEST_API_URL;
 
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -1990,7 +2002,12 @@ static void gps_sample_task(void *arg)
         if (interval_s == 0) {
             interval_s = 60;
         }
-        queue_push_sample();
+        if (s_wifi_event_group != NULL) {
+            EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+            if ((bits & WIFI_CONNECTED_BIT) == 0) {
+                queue_push_sample();
+            }
+        }
         vTaskDelay(pdMS_TO_TICKS((int)(interval_s * 1000)));
     }
 }

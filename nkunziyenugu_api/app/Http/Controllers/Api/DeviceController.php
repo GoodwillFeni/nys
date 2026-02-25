@@ -90,8 +90,10 @@ class DeviceController extends Controller
         if ($perPage <= 0) {
             $perPage = 20;
         }
-        if ($perPage > 200) {
-            $perPage = 200;
+
+        $maxPerPage = 5000;
+        if ($perPage > $maxPerPage) {
+            $perPage = $maxPerPage;
         }
 
         $paginator = $query->paginate($perPage);

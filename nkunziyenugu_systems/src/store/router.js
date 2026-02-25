@@ -124,6 +124,58 @@ const routes = [
     
     // End Protected Routes
 
+    //Farn Routes
+    {
+        path: '/Farm/FarmDashboard',
+        name: 'FarmDashboard',
+        component: () => import('../components/views/farm/FarmDashboard.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
+        path: '/Farm/Farms',
+        name: 'FarmList',
+        component: () => import('../components/views/farm/FarmList.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
+        path: '/Farm/Add',
+        name: 'AddFarm',
+        component: () => import('../components/views/farm/AddFarm.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/Edit/:id',
+        name: 'EditFarm',
+        props: true,
+        component: () => import('../components/views/farm/EditFarm.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/AnimalList',
+        name: 'AnimalList',
+        component: () => import('../components/views/farm/AnimalList.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
+        path: '/Farm/InventoryView',
+        name: 'InventoryView',
+        component: () => import('../components/views/farm/InventoryView.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
+        path: '/Farm/PnlReport',
+        name: 'PnlReport',
+        component: () => import('../components/views/farm/PnlReport.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/farm/addAnimal',
+        name: 'AddAnimal',
+        component: () => import('../components/views/farm/AddAnimal.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    // End Farm Routes
+
     // Public Routes 
     {
         path: '/SignUp',

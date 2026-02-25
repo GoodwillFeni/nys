@@ -1,5 +1,6 @@
 <template>
       <div class="">
+        <div class="app-loading-bar"></div>
       <form @submit.prevent="applyFilters">
         <!-- Center: Filters -->
          <div class="filters-row">
@@ -15,7 +16,7 @@
 
          <div class="form-group filter-field">
           <label for="perPage">Rows</label>
-            <select v-model.number="pagination.per_page" class="form-control" id="perPage" @change="applyFilters">
+            <select v-model.number="pagination.per_page" class="form-control" id="perPage">
               <option :value="10">10</option>
               <option :value="20">20</option>
               <option :value="50">50</option>
@@ -117,8 +118,38 @@
 <script>
 import api from "@/store/services/api";
 import { useToast } from "vue-toastification";
-import * as L from "leaflet";
 const toast = useToast();
+
+let googleMapsLoadPromise = null;
+function loadGoogleMaps(apiKey) {
+  if (window.google && window.google.maps) {
+    return Promise.resolve(window.google.maps);
+  }
+  if (googleMapsLoadPromise) {
+    return googleMapsLoadPromise;
+  }
+  googleMapsLoadPromise = new Promise((resolve, reject) => {
+    if (!apiKey) {
+      reject(new Error("Missing Google Maps API key"));
+      return;
+    }
+    const existing = document.querySelector('script[data-google-maps="1"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.google.maps));
+      existing.addEventListener("error", reject);
+      return;
+    }
+    const script = document.createElement("script");
+    script.setAttribute("data-google-maps", "1");
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
+    script.onload = () => resolve(window.google.maps);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return googleMapsLoadPromise;
+}
 
 export default {
   name: "DeviceLogs",
@@ -134,7 +165,7 @@ export default {
       logs: [],
       expandedPayloadId: null,
       map: null,
-      mapMarkersLayer: null,
+      mapMarkers: [],
       mapLine: null,
       filters: {
         type: "",
@@ -168,36 +199,34 @@ export default {
   beforeUnmount() {
     this.destroyMap();
   },
+  
   methods: {
     destroyMap() {
       if (this.map) {
         try {
-          this.map.stop();
+          if (this.mapLine) {
+            this.mapLine.setMap(null);
+          }
         } catch (e) {
           // ignore
         }
         try {
-          this.map.off();
+          if (Array.isArray(this.mapMarkers)) {
+            for (const m of this.mapMarkers) {
+              if (m && m.setMap) {
+                m.setMap(null);
+              }
+            }
+          }
         } catch (e) {
           // ignore
         }
-        this.map.remove();
         this.map = null;
-        this.mapMarkersLayer = null;
+        this.mapMarkers = [];
         this.mapLine = null;
       }
     },
-    fixLeafletIcons() {
-      const iconRetinaUrl = require("leaflet/dist/images/marker-icon-2x.png");
-      const iconUrl = require("leaflet/dist/images/marker-icon.png");
-      const shadowUrl = require("leaflet/dist/images/marker-shadow.png");
-      delete L.Icon.Default.prototype._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl,
-        iconUrl,
-        shadowUrl,
-      });
-    },
+
     toDateTimeLocal(date) {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -207,6 +236,7 @@ export default {
       const seconds = String(date.getSeconds()).padStart(2, "0");
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     },
+
     setDefaultDateRange() {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
@@ -215,57 +245,62 @@ export default {
       this.filters.from = this.toDateTimeLocal(start);
       this.filters.to = this.toDateTimeLocal(end);
     },
+
     ensureMap() {
       if (this.map) {
-        const container = this.map.getContainer ? this.map.getContainer() : null;
-        if (!container || !document.body.contains(container)) {
-          this.destroyMap();
-        } else {
-          this.$nextTick(() => {
-            this.map.invalidateSize();
-          });
-          return;
-        }
+        return;
       }
       const el = document.getElementById("deviceLogsMap");
       if (!el) {
         return;
       }
-      this.fixLeafletIcons();
-      this.map = L.map(el, {
-        zoomControl: true,
-        attributionControl: true,
-        scrollWheelZoom: false,
-        zoomAnimation: false,
-        markerZoomAnimation: false,
-        fadeAnimation: false,
-      });
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap contributors",
-      }).addTo(this.map);
-      this.mapMarkersLayer = L.layerGroup().addTo(this.map);
-      this.map.setView([0, 0], 2);
+      const apiKey = process.env.VUE_APP_GOOGLE_MAPS_API_KEY;
+      loadGoogleMaps(apiKey)
+        .then((maps) => {
+          if (this.map || this.filters.type !== "location") {
+            return;
+          }
+          this.map = new maps.Map(el, {
+            center: { lat: 0, lng: 0 },
+            zoom: 2,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: true,
+            gestureHandling: "cooperative",
+          });
+          this.refreshMap();
+        })
+        .catch((e) => {
+          console.error(e);
+          toast.error("Failed to load Google Maps.");
+        });
     },
     refreshMap() {
       if (this.filters.type !== "location") {
         return;
       }
+
       this.ensureMap();
-      if (!this.map || !this.mapMarkersLayer) {
+      if (!this.map || !(window.google && window.google.maps)) {
         return;
       }
 
+      const maps = window.google.maps;
+
       try {
-        this.map.stop();
+        if (Array.isArray(this.mapMarkers)) {
+          for (const m of this.mapMarkers) {
+            if (m && m.setMap) {
+              m.setMap(null);
+            }
+          }
+        }
       } catch (e) {
         // ignore
       }
-
-      this.mapMarkersLayer.clearLayers();
+      this.mapMarkers = [];
       if (this.mapLine) {
-        this.map.removeLayer(this.mapLine);
+        this.mapLine.setMap(null);
         this.mapLine = null;
       }
 
@@ -286,16 +321,23 @@ export default {
       points.sort((a, b) => a.time - b.time);
 
       if (points.length === 0) {
-        this.map.setView([0, 0], 2);
+        this.map.setCenter({ lat: 0, lng: 0 });
+        this.map.setZoom(2);
         return;
       }
 
       const latlngs = [];
       for (const p of points) {
-        const ll = [p.lat, p.lng];
+        const ll = { lat: p.lat, lng: p.lng };
         latlngs.push(ll);
         const gps = p.log.payload?.gps;
-        const tooltip = `<div style="min-width:220px">
+        const title = `Time: ${this.formatDate(p.log.message_timestamp || p.log.device_timestamp || p.log.created_at)}`;
+        const marker = new maps.Marker({
+          position: ll,
+          map: this.map,
+          title,
+        });
+        const infoHtml = `<div style="min-width:220px">
           <div><strong>Time:</strong> ${this.formatDate(p.log.message_timestamp || p.log.device_timestamp || p.log.created_at)}</div>
           <div><strong>Lat:</strong> ${p.lat}</div>
           <div><strong>Lng:</strong> ${p.lng}</div>
@@ -303,20 +345,35 @@ export default {
           ${gps ? `<div><strong>Satellites:</strong> ${gps.satellites}</div>` : ""}
           ${gps ? `<div><strong>Fix Quality:</strong> ${gps.fix_quality}</div>` : ""}
         </div>`;
-        const marker = L.marker(ll).bindTooltip(tooltip, { sticky: true });
-        marker.addTo(this.mapMarkersLayer);
+        const info = new maps.InfoWindow({ content: infoHtml });
+        marker.addListener("click", () => info.open({ map: this.map, anchor: marker }));
+        this.mapMarkers.push(marker);
       }
 
-      this.mapLine = L.polyline(latlngs, { color: "#2c7be5", weight: 3, opacity: 0.9 }).addTo(this.map);
+      this.mapLine = new maps.Polyline({
+        path: latlngs,
+        strokeColor: "#2c7be5",
+        strokeOpacity: 0.9,
+        strokeWeight: 3,
+        map: this.map,
+      });
       this.$nextTick(() => {
-        if (latlngs.length === 1) {
-          this.map.setView(latlngs[0], 15);
-        } else {
-          this.map.fitBounds(this.mapLine.getBounds(), { padding: [20, 20] });
+        if (!this.map) {
+          return;
         }
-        this.map.invalidateSize();
+        if (latlngs.length === 1) {
+          this.map.setCenter(latlngs[0]);
+          this.map.setZoom(15);
+          return;
+        }
+        const bounds = new maps.LatLngBounds();
+        for (const ll of latlngs) {
+          bounds.extend(ll);
+        }
+        this.map.fitBounds(bounds);
       });
     },
+
     formatDate(dateStr) {
       if (!dateStr) return "-";
       const date = new Date(dateStr);
@@ -329,6 +386,7 @@ export default {
       const seconds = String(date.getSeconds()).padStart(2, "0");
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     },
+
     prettyJson(payload) {
       try {
         return JSON.stringify(payload, null, 2);
@@ -336,13 +394,16 @@ export default {
         return String(payload);
       }
     },
+
     togglePayload(id) {
       this.expandedPayloadId = this.expandedPayloadId === id ? null : id;
     },
+
     applyFilters() {
       this.pagination.page = 1;
       this.fetchLogs();
     },
+
     resetFilters() {
       this.filters.type = "";
       this.setDefaultDateRange();
@@ -355,11 +416,15 @@ export default {
       this.fetchLogs();
     },
     fetchLogs() {
+      const loadingBarEl = document.querySelector(".app-loading-bar");
+      if (loadingBarEl) {
+        loadingBarEl.style.display = "block";
+      }
       this.loading = true;
       this.expandedPayloadId = null;
+      const requestedPerPage = this.pagination.per_page;
 
-      api
-        .get(`/devices/${this.id}/logs`, {
+      api.get(`/devices/${this.id}/logs`, {
           params: {
             type: this.filters.type || undefined,
             from: this.filters.from || undefined,
@@ -372,7 +437,7 @@ export default {
           const data = response.data?.data;
           this.logs = data?.items || [];
           this.pagination.page = data?.pagination?.page ?? 1;
-          this.pagination.per_page = data?.pagination?.per_page ?? this.pagination.per_page;
+          this.pagination.per_page = requestedPerPage;
           this.pagination.total = data?.pagination?.total ?? 0;
           this.pagination.last_page = data?.pagination?.last_page ?? 1;
         })
@@ -382,6 +447,9 @@ export default {
         })
         .finally(() => {
           this.loading = false;
+          if (loadingBarEl) {
+            loadingBarEl.style.display = "none";
+          }
           this.$nextTick(() => {
             this.refreshMap();
           });

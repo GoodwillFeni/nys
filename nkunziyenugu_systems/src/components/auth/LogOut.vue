@@ -1,6 +1,7 @@
 <template>
   <li @click="logout">
-    <a>Log Out</a>
+    <a>
+      <i class="bi bi-box-arrow-right"></i>Log Out</a>
   </li>
 </template>
 
@@ -33,4 +34,7 @@ li {
   margin: 0;
 }
 
+i {
+  margin-right: 10px;
+}
 </style>

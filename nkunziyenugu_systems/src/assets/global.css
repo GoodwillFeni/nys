@@ -94,3 +94,49 @@ label {
     font-weight: 600;
     color: #fff;
 }
+
+/* Progress bar */
+/* Top loading bar container */
+.app-loading-bar {
+  display: none;
+  position: fixed; /* stays at top */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 5px; /* thin line */
+  overflow: hidden;
+  z-index: 9999; /* above everything */
+  background: transparent;
+}
+
+/* Animated gradient glow line */
+.app-loading-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -50%; /* start outside screen for sliding effect */
+  width: 50%; /* width of the moving gradient */
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    #2d3561,
+    #c43e6b,
+    #f3826f,
+    #ffb961
+  );
+  animation: loadingProgress 2s linear infinite;
+  filter: drop-shadow(0 0 10px #2d3561)
+          drop-shadow(0 0 15px #c05c7e)
+          drop-shadow(0 0 20px #be786b)
+          drop-shadow(0 0 25px #ffb961);
+}
+
+/* Animation: slide gradient across the top */
+@keyframes loadingProgress {
+  0% {
+    left: -50%;
+  }
+  100% {
+    left: 100%;
+  }
+}
