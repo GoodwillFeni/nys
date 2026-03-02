@@ -1,15 +1,16 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Http\Request;
 
 class Farm extends Model
 {
     use HasFactory;
 
     protected $table = 'farm_farms';
+
     protected $fillable = [
         'account_id',
         'name',
@@ -32,11 +33,5 @@ class Farm extends Model
     public function reports()
     {
         return $this->hasMany(FarmReport::class);
-    }
-    public function index(Request $request)
-    {
-        return Farm::where('account_id', $request->account_id)
-                ->where('deleted', '!=', 1)
-                ->get();
     }
 }

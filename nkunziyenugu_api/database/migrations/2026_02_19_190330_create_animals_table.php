@@ -18,12 +18,12 @@ return new class extends Migration
             $table->foreignId('farm_id')->constrained()->cascadeOnDelete();
             $table->foreignId('animal_type_id')->constrained();
 
-            $table->string('global_tag');
+            $table->string('animal_tag');
             $table->string('farm_tag')->nullable();
 
             $table->enum('sex', ['male', 'female', 'unknown'])->default('unknown');
             $table->date('date_of_birth')->nullable();
-            $table->boolean('estimated_dob')->default(false);
+            $table->string('animal_name')->nullable();
 
             $table->enum('status', ['active', 'sold', 'dead'])->default('active');
             $table->text('notes')->nullable();
@@ -31,7 +31,7 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->unique(['account_id', 'global_tag']);
+            $table->unique(['account_id', 'animal_tag']);
             $table->unique(['farm_id', 'farm_tag']);
             $table->index(['account_id', 'farm_id']);
             $table->boolean('deleted')->default(false);

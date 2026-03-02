@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\FarmReportController;
 
 
+
 Route::post('/register', [AuthController::class, 'register']); //Route for registering a new user
 Route::post('/login', [AuthController::class, 'login']); //Route for logging in a user
 Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']); // Route for sending password reset link
@@ -104,15 +105,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'destroy']);
 
     // Route::middleware('account.access')->prefix('farm')->group(function () {
-    Route::get('farm/farms', [FarmController::class, 'index']);
-    Route::post('farm/farms', [FarmController::class, 'store']);
+    Route::get('farm/farms', [FarmController::class, 'index']); //
+    Route::post('farm/farms', [FarmController::class, 'store']); // Create new farm
+    Route::get('farm/farms/{farm}', [FarmController::class, 'show']); // Get farm details
     Route::put('farm/farms/{farm}', [FarmController::class, 'update']);
     Route::delete('farm/farms/{farm}', [FarmController::class, 'destroy']);
 
+    Route::get('farm/animals/types', [AnimalController::class, 'types']);
     Route::get('farm/animals', [AnimalController::class, 'index']);
     Route::post('farm/animals', [AnimalController::class, 'store']);
     Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
-
     Route::post('farm/animals/{animal}/events', [AnimalEventController::class, 'store']);
 
     Route::get('farm/inventory/items', [InventoryController::class, 'items']);

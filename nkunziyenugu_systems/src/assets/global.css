@@ -140,3 +140,10 @@ label {
     left: 100%;
   }
 }
+
+
+.optional {
+    font-size: 10px;
+    color: #6c757d;
+    font-style: italic;
+}

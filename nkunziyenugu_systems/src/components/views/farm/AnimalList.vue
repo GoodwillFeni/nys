@@ -1,27 +1,31 @@
 <template>
   <div>
-    <form class="form-inline">
-      <div class="form-group">
-        <label for="search" class="block text-sm font-medium text-gray-700">Search</label>
-          <input v-model="filters.search" 
-          type="text" name="search" 
-          id="search" class="form-control" placeholder="Search tag..." @input="loadAnimals()">
-      </div>
 
-      <div class="form-group mt-4">
-        <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
-        <div class="mt-1">
-          <select v-model="filters.status" id="status" name="status" class="form-control" @change="loadAnimals()">
-            <option value="">All</option>
-            <option value="active">Active</option>
-            <option value="sold">Sold</option>
-            <option value="dead">Dead</option>
-          </select>
+        <div class="card p-3 mb-3">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h4 class="m-0">Animal List</h4>
+        <div class="d-flex align-items-center gap-2">
+          <input
+            class="form-control form-control-sm"
+            style="width: 220px"
+            type="text"
+            placeholder="Search animal"
+            v-model="filters.search"
+          />
+        <div class="form-group">
+            <div class="form-group">
+              <select v-model="filters.status" id="status" name="status" class="form-control-sm" @change="loadAnimals()">
+                <option value="">All</option>
+                <option value="active">Active</option>
+                <option value="sold">Sold</option>
+                <option value="dead">Dead</option>
+              </select>
+            </div>
+          </div>
+            <button type="button" class="button-info" @click="addAnimal()">Add Animal</button>
         </div>
       </div>
-
-      <button type="button" class="button-info" @click="addAnimal()">Add Animal</button>
-    </form>
+    </div>
 
     <table class="table-auto w-full">
       <thead>
@@ -87,4 +91,43 @@ export default {
 }
 </script>
 <style scoped>
+.filter-form {
+  margin: 10px 0 10px 0;
+  
+}
+.shop-page {
+  padding: 10px;
+}
+
+.card {
+  background: linear-gradient(135deg, #27253f, #605a6d);
+  color: #fff;
+  border-radius: 8px;
+}
+
+.thumb {
+  width: 100px;
+  height: 100px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+
+.thumb-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 </style>

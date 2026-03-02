@@ -7,16 +7,20 @@
     <table class="">
       <thead>
         <tr>
-          <th>Name</th>
+          <th>#</th>
+          <th>Farm Name</th>
           <th>Location</th>
+          <th>Description</th>
           <th>Status</th>
           <th width="150">Actions</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="farm in farms" :key="farm.id">
+          <td>{{ (farms.indexOf(farm) + 1) }}</td>
           <td>{{ farm.name }}</td>
           <td>{{ farm.location }}</td>
+          <td>{{ farm.description }}</td>
           <td>
             <span :class="farm.is_active ? 'badge bg-success' : 'badge bg-danger'">
               {{ farm.is_active ? 'Active' : 'Inactive' }}
@@ -44,7 +48,6 @@
 </template>
 
 <script>
-import axios from 'axios'
 import api from '@/store/services/api';
 
 export default {
@@ -86,8 +89,10 @@ export default {
     async deleteFarm(id) {
       if (!confirm("Delete this farm?")) return
 
-      await axios.delete(`/api/farms/${id}`, {
-        data: { account_id: this.accountId }
+      await api.delete(`/farm/farms/${id}`, {
+        data: { 
+          account_id: this.accountId 
+        }
       })
 
       this.loadFarms()

@@ -44,6 +44,7 @@ export default {
   
   methods: {
     handleAccountChange(event) {
+      console.log("Selected account ID:", event.target.value);
       const accountId = parseInt(event.target.value);
       const account = this.accounts.find(acc => acc.id === accountId);
       

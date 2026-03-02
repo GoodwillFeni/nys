@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\FarmAnimal;
 use Illuminate\Support\Str;
+use App\Models\FarmAnimalType;
 
 class AnimalController extends Controller
 {
@@ -44,11 +45,21 @@ class AnimalController extends Controller
             'account_id' => $request->account_id,
             'farm_id' => $request->farm_id,
             'animal_type_id' => $request->animal_type_id,
-            'global_tag' => strtoupper(Str::random(10)),
+            'animal_tag' => $request->animal_tag ?? Str::uuid()->toString(),
             'farm_tag' => $request->farm_tag,
             'sex' => $request->sex ?? 'unknown',
             'date_of_birth' => $request->date_of_birth,
-            'estimated_dob' => $request->estimated_dob ?? false
+            'animal_name' => $request->animal_name ?? null,
+        ]);
+    }
+
+    public function types()
+    {
+        $types = FarmAnimalType::where('deleted', '!=', 1)->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $types
         ]);
     }
 
