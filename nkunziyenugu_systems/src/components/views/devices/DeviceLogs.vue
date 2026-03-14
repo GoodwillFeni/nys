@@ -201,7 +201,7 @@ export default {
   },
   
   methods: {
-    destroyMap() {
+    destroyMap() { // Destroy the map if it exists
       if (this.map) {
         try {
           if (this.mapLine) {
@@ -227,7 +227,7 @@ export default {
       }
     },
 
-    toDateTimeLocal(date) {
+    toDateTimeLocal(date) { // Converts a Date object to a string in the format YYYY-MM-DDTHH:MM:SS
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0");
       const day = String(date.getDate()).padStart(2, "0");
@@ -237,7 +237,7 @@ export default {
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     },
 
-    setDefaultDateRange() {
+    setDefaultDateRange() { // Sets the default date range
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const end = new Date();
@@ -246,7 +246,7 @@ export default {
       this.filters.to = this.toDateTimeLocal(end);
     },
 
-    ensureMap() {
+    ensureMap() { // Ensure the map is loaded
       if (this.map) {
         return;
       }
@@ -275,7 +275,7 @@ export default {
           toast.error("Failed to load Google Maps.");
         });
     },
-    refreshMap() {
+    refreshMap() {// Refresh the map
       if (this.filters.type !== "location") {
         return;
       }
@@ -374,7 +374,7 @@ export default {
       });
     },
 
-    formatDate(dateStr) {
+    formatDate(dateStr) { // Format a date
       if (!dateStr) return "-";
       const date = new Date(dateStr);
       if (Number.isNaN(date.getTime())) return "-";
@@ -387,7 +387,7 @@ export default {
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     },
 
-    prettyJson(payload) {
+    prettyJson(payload) { // Format a JSON payload for display in the UI
       try {
         return JSON.stringify(payload, null, 2);
       } catch (e) {
@@ -415,7 +415,7 @@ export default {
       this.pagination.page = page;
       this.fetchLogs();
     },
-    fetchLogs() {
+    fetchLogs() { // Fetch device logs
       const loadingBarEl = document.querySelector(".app-loading-bar");
       if (loadingBarEl) {
         loadingBarEl.style.display = "block";

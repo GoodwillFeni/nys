@@ -11,10 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('device_messages', function (Blueprint $table) {
-            if (! Schema::hasColumn('device_messages', 'message_timestamp')) {
-                $table->timestamp('message_timestamp')->nullable()->after('lng');
-            }
+        Schema::table('farm_animals', function (Blueprint $table) {
+            $table->foreignId('breed_id')
+                ->nullable()
+                ->after('animal_type_id')
+                ->constrained('animal_breeds')
+                ->nullOnDelete();
         });
     }
 
@@ -23,8 +25,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('device_messages', function (Blueprint $table) {
-            $table->dropColumn('message_timestamp');
+        Schema::table('farm_animals', function (Blueprint $table) {
+            //
         });
     }
 };

@@ -86,6 +86,7 @@
             <th>#</th>
             <th>Type</th>
             <th>Payment</th>
+            <th>Notes</th>
             <th>Amount</th>
             <th>Date</th>
             <th>Created By</th>
@@ -98,6 +99,7 @@
             <td>{{ idx + 1 }}</td>
             <td>{{ r.transaction_type }}</td>
             <td>{{ r.payment_type || '-' }}</td>
+            <td>{{ r.notes || '-' }}</td>
             <td>R {{ formatMoney(r.amount) }}</td>
             <td>{{ formatDateTime(r.date || r.created_at) }}</td>
             <td>{{ formatUser(r.user) }}</td>

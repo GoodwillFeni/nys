@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\ShopCreditRequestController;
 use App\Http\Controllers\Api\FarmController;
 use App\Http\Controllers\Api\AnimalController;
 use App\Http\Controllers\Api\AnimalEventController;
+use App\Http\Controllers\Api\AnimalDeviceLinkController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\FarmReportController;
 
@@ -104,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'update']);
     Route::delete('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'destroy']);
 
+    // Farm routes - all routes prefixed with /farm and protected by account.access middleware
     // Route::middleware('account.access')->prefix('farm')->group(function () {
     Route::get('farm/farms', [FarmController::class, 'index']); //
     Route::post('farm/farms', [FarmController::class, 'store']); // Create new farm
@@ -112,10 +114,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('farm/farms/{farm}', [FarmController::class, 'destroy']);
 
     Route::get('farm/animals/types', [AnimalController::class, 'types']);
+    Route::get('farm/animals/breeds', [AnimalController::class, 'breeds']);
     Route::get('farm/animals', [AnimalController::class, 'index']);
     Route::post('farm/animals', [AnimalController::class, 'store']);
     Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
+    Route::put('farm/animals/{animal}', [AnimalController::class, 'update']);
+    Route::delete('farm/animals/{animal}', [AnimalController::class, 'destroy']);
     Route::post('farm/animals/{animal}/events', [AnimalEventController::class, 'store']);
+
+    // Animal Device Links
+    Route::post('farm/animals/devices/link', [AnimalDeviceLinkController::class, 'linkDevice']);
+    Route::post('farm/animals/devices/transfer', [AnimalDeviceLinkController::class, 'transferDevice']);
+    Route::put('farm/animals/devices/link/{linkId}', [AnimalDeviceLinkController::class, 'unlinkDevice']);
+    Route::get('farm/animals/{animalId}/devices', [AnimalDeviceLinkController::class, 'getAnimalDevices']);
+    Route::get('farm/devices/{deviceId}/animals', [AnimalDeviceLinkController::class, 'getDeviceAnimals']);
 
     Route::get('farm/inventory/items', [InventoryController::class, 'items']);
     Route::post('farm/inventory/movements', [InventoryController::class, 'movement']);

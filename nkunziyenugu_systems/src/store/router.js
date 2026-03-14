@@ -134,26 +134,26 @@ const routes = [
     {
         path: '/Farm/Farms',
         name: 'FarmList',
-        component: () => import('../components/views/farm/FarmList.vue'),
+        component: () => import('../components/views/farm/farm/FarmList.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
     },
     {
         path: '/Farm/Add',
         name: 'AddFarm',
-        component: () => import('../components/views/farm/AddFarm.vue'),
+        component: () => import('../components/views/farm/farm/AddFarm.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/Farm/Edit/:id',
         name: 'EditFarm',
         props: true,
-        component: () => import('../components/views/farm/EditFarm.vue'),
+        component: () => import('../components/views/farm/farm/EditFarm.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/Farm/AnimalList',
         name: 'AnimalList',
-        component: () => import('../components/views/farm/AnimalList.vue'),
+        component: () => import('../components/views/farm/animal/AnimalList.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
     },
     {
@@ -171,7 +171,35 @@ const routes = [
     {
         path: '/farm/addAnimal',
         name: 'AddAnimal',
-        component: () => import('../components/views/farm/AddAnimal.vue'),
+        component: () => import('../components/views/farm/animal/AddAnimal.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/EditAnimal/:id',
+        name: 'EditAnimal',
+        props: true,
+        component: () => import('../components/views/farm/animal/EditAnimal.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/AddAnimalEvent/:id',
+        name: 'AddAnimalEvent',
+        props: true,
+        component: () => import('../components/views/farm/animal/AddAnimalEvent.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    // {
+    //     path: '/Farm/EditAnimalEvent/:id',
+    //     name: 'EditAnimalEvent',
+    //     props: true,
+    //     component: () => import('../components/views/farm/animal/EditAnimalEvent.vue'),
+    //     meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    // },
+    {
+        path: '/Farm/AnimalDeviceLink/:id',
+        name: 'AnimalDeviceLink',
+        props: true,
+        component: () => import('../components/views/farm/animal/AnimalDeviceLink.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     // End Farm Routes

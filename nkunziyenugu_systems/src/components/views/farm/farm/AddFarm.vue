@@ -57,7 +57,7 @@ export default {
       form: {
         name: '',
         location: '',
-        account_id: null,
+        account_id: '',
         description: '',
         is_active: 1
       }

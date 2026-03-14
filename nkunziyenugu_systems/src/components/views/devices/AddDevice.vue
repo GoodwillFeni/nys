@@ -67,7 +67,7 @@ export default {
     return {
       loading: false,
       accounts: [],
-      selectedAccount: null,
+      selectedAccount: "",
       form: {
         device_asset_name: "",
         device_uid: "",

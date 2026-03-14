@@ -5,15 +5,31 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\FarmAnimal;
-use Illuminate\Support\Str;
 use App\Models\FarmAnimalType;
+use App\Models\AnimalBreed;
+use App\Services\AuditLogService;
 
 class AnimalController extends Controller
 {
     public function index(Request $request)
     {
-        $query = FarmAnimal::with('animalType')
-            ->where('account_id', $request->account_id);
+        // determine account id from various sources: request body, header, authenticated user
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID')
+            ?? optional($request->user())->account_id;
+
+        $query = FarmAnimal::with(
+                            'animalType',
+                            'breed',
+                            'farm',
+                            'account',
+                            //'events',
+                            'deviceLinks'
+                            );
+
+        if ($accountId) {
+            $query->where('account_id', $accountId);
+        }
 
         if ($request->farm_id) {
             $query->where('farm_id', $request->farm_id);
@@ -22,11 +38,12 @@ class AnimalController extends Controller
         if ($request->status) {
             $query->where('status', $request->status);
         }
-
+        
         if ($request->search) {
             $query->where(function ($q) use ($request) {
-                $q->where('global_tag', 'like', "%{$request->search}%")
-                  ->orWhere('farm_tag', 'like', "%{$request->search}%");
+                $q->where('animal_tag', 'like', "%{$request->search}%")
+                  ->orWhere('farm_tag', 'like', "%{$request->search}%")
+                  ->orWhere('animal_name', 'like', "%{$request->search}%");
             });
         }
 
@@ -36,21 +53,47 @@ class AnimalController extends Controller
     public function store(Request $request) // Create a new animal
     {
         $request->validate([
-            'farm_id' => 'required|exists:farms,id',
-            'animal_type_id' => 'required|exists:animal_types,id',
-            'farm_tag' => 'nullable|string'
+            'account_id' => 'required|integer',
+            'farm_id' => 'required|integer|exists:farm_farms,id',
+            'animal_type_id' => 'required|integer|exists:farm_animal_types,id',
+            'animal_tag' => [
+                'required',
+                'numeric',
+                'between:1,100000',
+                // unique per farm_id/farm_tag
+                function ($attribute, $value, $fail) use ($request) {
+                    $exists = \App\Models\FarmAnimal::where('farm_id', $request->farm_id)
+                        ->where('farm_tag', $value)
+                        ->exists();
+                    if ($exists) {
+                        $fail('The '.$attribute.' has already been taken for this farm.');
+                    }
+                }
+            ],
+            'sex' => 'required|string',
+            'date_of_birth' => 'required|date',
+            'name' => 'nullable|string',
+            'description' => 'nullable|string',
+            'breed_id' => 'required|integer|exists:farm_animal_breeds,id',
         ]);
 
-        return FarmAnimal::create([
+        return FarmAnimal::create([ // Create the animal record
             'account_id' => $request->account_id,
             'farm_id' => $request->farm_id,
             'animal_type_id' => $request->animal_type_id,
-            'animal_tag' => $request->animal_tag ?? Str::uuid()->toString(),
-            'farm_tag' => $request->farm_tag,
-            'sex' => $request->sex ?? 'unknown',
+            'animal_tag' => $request->animal_tag,
+            // mirror ear tag to farm tag to satisfy the unique constraint
+            'farm_tag' => $request->animal_tag,
+            'sex' => $request->sex,
             'date_of_birth' => $request->date_of_birth,
-            'animal_name' => $request->animal_name ?? null,
+            'animal_name' => $request->name ?? null,
+            'breed_id' => $request->breed_id,
+            'status' => 'active',
+            // 'notes' => $request->description ?? null,
+            'notes' => $request->notes ?? $request->description ?? null, // always save to notes
         ]);
+
+        AuditLogService::logCreate($animal, $request, "Created animal: {$animal->animal_name}");
     }
 
     public function types()
@@ -62,13 +105,94 @@ class AnimalController extends Controller
             'data' => $types
         ]);
     }
-
     public function show(Request $request, FarmAnimal $animal)
     {
-        if ($animal->account_id != $request->account_id) {
-            abort(403);
+        // Determine account ID (same logic as index)
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID')
+            ?? optional($request->user())->account_id;
+
+        if ($accountId && $animal->account_id != $accountId) {
+            abort(403, 'Unauthorized access to this animal');
         }
 
-        return $animal->load('animalType', 'events', 'deviceLinks');
+        // Load all related data for editing/viewing
+        return $animal->load(
+            'animalType',
+            'breed',
+            'farm',
+            'account',
+            'deviceLinks',
+            //'events'
+        );
     }
+    public function breeds(Request $request)
+    {
+        $accountId = $request->header('X-Account-ID');
+
+        $breeds = AnimalBreed::where('account_id', $accountId)
+            ->when($request->animal_type_id, function ($query) use ($request) {
+                $query->where('animal_type_id', $request->animal_type_id);
+            })
+            ->orderBy('breed_name')
+            ->get();
+
+        return response()->json($breeds);
+
+        AuditLogService::logCreate($animal, $request, "Created animal: {$animal->animal_name}");
+    }
+
+public function update(Request $request, FarmAnimal $animal)
+{
+    // Determine account ID (same logic as index)
+    $accountId = $request->account_id
+        ?? $request->header('X-Account-ID')
+        ?? optional($request->user())->account_id;
+
+    if ($accountId && $animal->account_id != $accountId) {
+        abort(403, 'Unauthorized access to this animal');
+    }
+
+    // Prepare update data
+    $updateData = $request->all();
+
+    // Map description to notes if notes not provided
+    if ($request->has('description') && !$request->has('notes')) {
+        $updateData['notes'] = $request->description;
+    }
+
+    // Validate the incoming data
+    $request->validate([
+        'animal_type_id' => 'sometimes|required|integer|exists:farm_animal_types,id',
+        'animal_tag' => [
+            'sometimes',
+            'required',
+            'numeric',
+            'between:1,10000000',
+            function ($attribute, $value, $fail) use ($animal) {
+                if ($value == $animal->animal_tag) return;
+
+                $exists = \App\Models\FarmAnimal::where('farm_id', $animal->farm_id)
+                    ->where('farm_tag', $value)
+                    ->where('id', '<>', $animal->id)
+                    ->exists();
+                if ($exists) {
+                    $fail('The '.$attribute.' has already been taken for this farm.');
+                }
+            }
+        ],
+        'sex' => 'sometimes|required|string',
+        'date_of_birth' => 'sometimes|required|date',
+        'name' => 'sometimes|nullable|string',
+        'notes' => 'sometimes|nullable|string',
+        'breed_id' => 'sometimes|required|integer|exists:farm_animal_breeds,id',
+    ]);
+
+    // Update using mapped data
+    $oldValues = $animal->getOriginal();
+    $animal->update($updateData); // <-- use $updateData here
+    AuditLogService::logUpdate($animal, $oldValues, $request, "Updated animal: {$animal}");
+
+    return $animal;
+}
 }

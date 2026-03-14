@@ -3,13 +3,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Animal;
+use App\Models\FarmAnimal;
 use App\Models\AnimalEvent;
 
 
 class AnimalEventController extends Controller
 {
-    public function store(Request $request, Animal $animal)
+    public function store(Request $request, FarmAnimal $animal)
     {
         if ($animal->account_id != $request->account_id) {
             abort(403);

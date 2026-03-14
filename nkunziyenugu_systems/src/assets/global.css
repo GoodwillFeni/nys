@@ -147,3 +147,157 @@ label {
     color: #6c757d;
     font-style: italic;
 }
+
+/* Global form button styling */
+.form-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #27253f, #605a6d);
+}
+
+.form-container {
+  width: 900px;
+  max-width: 95%;
+  height: 650px;
+  background: #ffffff;
+  display: flex;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+/* LEFT */
+.form-left {
+  flex: 1;
+  background: linear-gradient(135deg, #27253f, #605a6d);
+  color: #ffffff;
+  padding: 50px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.form-left h1 {
+  font-size: 32px;
+  margin-bottom: 15px;
+}
+
+.form-left p {
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+/* RIGHT */
+.form-right {
+  flex: 1;
+  padding: 50px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.form-right h2 {
+  text-align: center;
+  margin-bottom: 25px;
+  color: #6a5cff;
+}
+
+/* INPUTS */
+.input-group {
+  margin-bottom: 15px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 16;
+  color: #333;
+}
+
+.input-group input,
+.input-group select,
+.input-group textarea {
+  width: 100%;
+  padding: 12px 15px;
+  border-radius: 25px;
+  border: 1px solid #ddd;
+  outline: none;
+  font-size: 14px;
+  color: #444;
+}
+
+.input-group input:focus,
+.input-group select:focus {
+  border-color: #6a5cff;
+}
+
+/* DATE INPUT */
+input[type="date"] {
+  width: 100%;
+  padding: 12px 15px;
+  border-radius: 25px;
+  border: 1px solid #ddd;
+  outline: none;
+  font-size: 14px;
+  color: #444;
+}
+
+input[type="date"]:focus {
+  border-color: #6a5cff;
+}
+
+/* TOOLTIP */
+/* TOOLTIP */
+.input-group {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip-text {
+  visibility: hidden;
+  width: max-content;
+  background-color: #00828b;
+  color: #fff;
+  text-align: center;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+
+  position: absolute;
+  top: -30px; /* adjust as needed */
+  left: 0;
+  white-space: nowrap;
+  z-index: 10;
+
+  /* optional smooth fade */
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.input-group:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .login-container {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .login-left {
+    padding: 30px;
+    text-align: center;
+  }
+}
+
+/* BUTTON */
+.col-6 {
+  display: flex;
+  justify-content: center;
+}
+
+/* End Global form button styling */

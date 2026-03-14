@@ -46,7 +46,6 @@
   </div>
 </template>
 <script>
-import api from "@/store/services/api";
 import { useToast } from "vue-toastification";
 const toast = useToast();
 
@@ -58,7 +57,16 @@ export default {
     };
   },
   mounted() {
-    this.fetchDevices();
+    //Get device list
+    this.$store.dispatch("getDeviceList", {
+        account_id: localStorage.getItem("account_id"),
+        });
+        this.$store.subscribe((mutation) => {
+          if (mutation.type === "SET_DEVICE_LIST") {
+            this.devices = mutation.payload;
+          }
+        });
+    //End get device list
   },
   methods: {
     formatDate(dateStr) {
@@ -70,19 +78,6 @@ export default {
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    },
-
-    fetchDevices() {
-      api
-        .get("/devices")
-        .then((response) => {
-          this.devices = response.data.data;
-          console.log(this.devices)
-        })
-        .catch((error) => {
-          console.error(error);
-          toast.error(error.response?.data?.message || "Failed to load devices.");
-        });
     },
     
     DeviceLogs(device) {
