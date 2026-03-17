@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 
 class FarmAnimal extends Model
 {
@@ -23,6 +24,7 @@ class FarmAnimal extends Model
         'animal_name',
         'status',
         'notes',
+        'deleted',
     ];
 
     // Relationships
@@ -51,16 +53,19 @@ class FarmAnimal extends Model
         return $this->hasMany(AnimalEvent::class, 'animal_id');
     }
 
-    // public function deviceLinks()
-    // {
-    //     return $this->hasMany(AnimalDeviceLink::class, 'animal_id');
-    // }
-
     public function deviceLinks()
     {
         // Only return active links
         return $this->hasMany(AnimalDeviceLink::class, 'animal_id')
                     ->where('deleted', '!=', 1)
-                    ->with('device'); // optionally eager-load the device
+                    ->with('device'); 
     }
+
+    protected static function booted()
+    {
+        static::addGlobalScope('not_deleted', function (Builder $builder) {
+            $builder->where('deleted', '!=', 1);
+        });
+    }
+
 }

@@ -40,6 +40,7 @@
           <th>Type</th>
           <th>Sex</th>
           <th>Status</th>
+          <th>Device ID</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -53,11 +54,19 @@
           <td>{{ animal.animal_type.name }}</td>
           <td>{{ animal.sex }}</td>
           <td>{{ animal.status }}</td>
+          <td 
+            class="cursor-pointer"
+            v-if="animal.device_links?.[0]?.device?.device_uid" 
+            @click="DeviceLogs(animal)">
+            {{ animal.device_links?.[0]?.device?.device_uid }}
+          </td>
+          <td v-else>
+            No linked device
+          </td>          
           <td>
             <!-- <button class="button-info" @click="$router.push({ name: 'AnimalDetails', params: { id: animal.id } })">
               <i class="bi bi-eye"></i>
             </button> -->
-
             <button 
               @mouseenter="showTooltip = true" 
               @mouseleave="showTooltip = false"
@@ -69,7 +78,8 @@
             </button>
 
             <button class="button-info" @click="$router.push({ name: 'AddAnimalEvent', params: { id: animal.id } })">
-              <i class="bi bi-plus-square"></i>
+              <!-- <i class="bi bi-plus-square"></i> -->
+              <i class="bi bi-calendar2-event"></i>
             </button>
 
              <button 
@@ -86,7 +96,7 @@
               <i class="bi bi-link-45deg"></i>
             </button>
             
-            <button class="button-danger" @click="$router.push({ name: 'DeleteAnimal', params: { id: animal.id } })">
+            <button class="button-danger" @click="deleteAnimal(animal)">
               <i class="bi bi-trash"></i>
             </button>
           </td>
@@ -129,7 +139,11 @@ export default {
       // this.$router.push({ name: "AddAnimalBreed" });
     },
 
-    async loadAnimals() {
+    DeviceLogs(animal) {
+      this.$router.push({ name: 'DeviceLogs', params: { id: animal.device_links?.[0]?.device?.id } });
+    },
+
+    async loadAnimals() { //Fetch all animals
       this.$store.dispatch("fetchAnimalList", this.filters)
       this.$store.subscribe((mutation) => {
         if (mutation.type === "SET_ANIMAL_LIST") {
@@ -138,7 +152,7 @@ export default {
       })
     },
 
-    async unlinkDevice(animal) {
+    async unlinkDevice(animal) { //Unlink device
       let confirmation = confirm("Are you sure you want to unlink this device from this animal?");
       if (!confirmation) {
         return;
@@ -152,7 +166,21 @@ export default {
       } catch (error) {
         console.log(error.response?.data?.message)
       }
-    }
+    },
+
+    async deleteAnimal(animal) { // Delete animal
+      let confirmation = confirm("Are you sure you want to delete this animal?");
+      if (!confirmation) {
+        return;
+      }
+      try {
+       const response = await api.delete(`farm/animals/${animal.id}`);
+        toast.success(response.data.message);
+        this.loadAnimals();
+      } catch (error) {
+        console.log(error.response?.data?.message)
+      }
+    },
   }
 }
 </script>
@@ -195,5 +223,11 @@ export default {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.cursor-pointer:hover,
+.cursor-pointer:active {
+  cursor: pointer;
+  color: #6a5cff;
 }
 </style>

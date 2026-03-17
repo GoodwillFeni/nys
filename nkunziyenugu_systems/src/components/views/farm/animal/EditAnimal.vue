@@ -75,7 +75,7 @@
           <div class="row">
             <div class="col-2" >
                 <button type="submit" :disabled="loading" class="button-info">
-                    {{ loading ? 'Updating animal...' : 'Update Animal' }}
+                    {{ loading ? 'Updating ...' : 'Update' }}
                 </button>
             </div>
             <div class="col-2">

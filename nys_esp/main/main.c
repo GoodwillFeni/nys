@@ -32,8 +32,8 @@
 
 #define GPS_UART UART_NUM_1
 #define GPS_BAUD_RATE 9600
-#define GPS_RX_GPIO GPIO_NUM_5
-#define GPS_TX_GPIO GPIO_NUM_4
+#define GPS_RX_GPIO GPIO_NUM_4
+#define GPS_TX_GPIO GPIO_NUM_5
 #define GPS_SWAP_RX_TX 0
 
 #define TEST_INPUT_GPIO GPIO_NUM_1
@@ -152,7 +152,7 @@ static void time_maybe_start_sntp(void);
 
 static void time_try_update_base_from_system(void);
 
-typedef struct {
+typedef struct { // v1 of nys_queue_rec structure 
     uint32_t magic;
     uint32_t seq;
     int64_t ts_s;
@@ -542,12 +542,19 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     free(json);
     return err;
 }
-
 static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, bool has_fix)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
+    // Duplication protection (2 seconds)
+    static int64_t last_send_us = 0;
+    int64_t now_us = esp_timer_get_time();
+    if ((now_us - last_send_us) < 2000000) {
+        ESP_LOGW(TAG, "Skipping duplicate send");
+        return ESP_OK;
+    }
+    last_send_us = now_us;
 
     const char *url = (cfg->api_url[0] != 0) ? cfg->api_url : NYS_API_URL;
 
@@ -558,17 +565,24 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
 
     int64_t uptime_s = time_uptime_s();
     int64_t epoch_s = time_now_epoch_s();
+
     cJSON_AddNumberToObject(root, "uptime_s", (double)uptime_s);
     if (epoch_s > 0) {
         cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
     }
 
+    // GPS selection logic (avoid double-use of last_fix)
     bool include_gps = false;
     gps_fix_t to_send = { 0 };
+
     if (has_fix && fix != NULL && fix->has_fix) {
         include_gps = true;
         to_send = *fix;
-    } else if (s_last_fix_valid && s_last_fix.has_fix) {
+
+        // prevent immediate reuse
+        s_last_fix_valid = false;
+    } 
+    else if (s_last_fix_valid && s_last_fix.has_fix) {
         include_gps = true;
         to_send = s_last_fix;
     }
@@ -616,40 +630,39 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     }
 
     esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_header(client, "Accept", "application/json");
+    esp_http_client_set_header(client, "Accept", "*/*"); 
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "X-DEVICE-ID", cfg->device_uid);
     esp_http_client_set_header(client, "X-DEVICE-SIGNATURE", sig);
     esp_http_client_set_header(client, "X-DEVICE-KEY", cfg->device_key);
+
     esp_http_client_set_post_field(client, json, (int)strlen(json));
 
     esp_err_t err = esp_http_client_perform(client);
 
     int status = esp_http_client_get_status_code(client);
-    if (status > 0 && (status < 200 || status >= 300)) {
-        char resp[512];
-        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
-        if (r >= 0) {
-            resp[r] = 0;
-            if (r > 0) {
-                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
-            }
-        }
-    }
+
+    // don't try read response body (causes chunk error)
     if (err == ESP_OK) {
-        if (status < 200 || status >= 300) {
+        if (status >= 200 && status < 300) {
+            ESP_LOGI(TAG, "POST success status=%d", status);
+            err = ESP_OK;
+        } else {
+            ESP_LOGW(TAG, "POST failed status=%d", status);
             err = ESP_FAIL;
         }
-        ESP_LOGI(TAG, "POST status=%d", status);
-    } else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
-        ESP_LOGW(TAG, "POST incomplete data but status=%d; treating as success", status);
+    } 
+    else if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300) {
+        ESP_LOGW(TAG, "POST incomplete but OK (status=%d)", status);
         err = ESP_OK;
-    } else {
-        ESP_LOGE(TAG, "POST failed: %s (status=%d)", esp_err_to_name(err), status);
+    } 
+    else {
+        ESP_LOGE(TAG, "POST error: %s (status=%d)", esp_err_to_name(err), status);
     }
 
     esp_http_client_cleanup(client);
     free(json);
+
     return err;
 }
 
@@ -760,12 +773,21 @@ static void send_task(void *arg)
     int64_t last_hb_us = 0;
     int64_t last_loc_us = 0;
 
+    bool just_sent_live = false; // mark if we just sent location
+
     while (1) {
         EventBits_t before = xEventGroupGetBits(s_wifi_event_group);
         if ((before & WIFI_CONNECTED_BIT) == 0) {
             logged_connected = false;
         }
-        (void)xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+
+        (void)xEventGroupWaitBits(
+            s_wifi_event_group,
+            WIFI_CONNECTED_BIT,
+            pdFALSE,
+            pdTRUE,
+            portMAX_DELAY
+        );
 
         if (!logged_connected) {
             ESP_LOGI(TAG, "send_task unblocked: WIFI_CONNECTED_BIT set");
@@ -773,49 +795,74 @@ static void send_task(void *arg)
         }
 
         int64_t now_us = esp_timer_get_time();
-        int64_t hb_int_us = (int64_t)s_cfg.heartbeat_interval_s * 1000000LL;
-        int64_t loc_int_us = (int64_t)s_cfg.location_interval_s * 1000000LL;
-        if (hb_int_us <= 0) hb_int_us = 60000000LL;
+
+        int64_t hb_int_us  = (int64_t)s_cfg.heartbeat_interval_s * 1000000LL;
+        int64_t loc_int_us = (int64_t)s_cfg.location_interval_s  * 1000000LL;
+
+        if (hb_int_us <= 0)  hb_int_us  = 60000000LL;
         if (loc_int_us <= 0) loc_int_us = 60000000LL;
 
-        bool do_hb = (last_hb_us == 0) || (now_us - last_hb_us >= hb_int_us);
+        bool do_hb  = (last_hb_us == 0)  || (now_us - last_hb_us  >= hb_int_us);
         bool do_loc = (last_loc_us == 0) || (now_us - last_loc_us >= loc_int_us);
 
         uint32_t unsent = queue_count_unsent();
+
+        // Queue backlog handling with debug
         if (unsent > 2) {
             if (unsent != last_backlog_logged || (now_us - last_backlog_log_us) > 10000000LL) {
                 ESP_LOGW(TAG, "Queue backlog %u unsent; draining before live sends", (unsigned)unsent);
                 last_backlog_logged = unsent;
                 last_backlog_log_us = now_us;
             }
+
             for (int i = 0; i < 6; i++) {
+                ESP_LOGI(TAG, "Queue drain: step %d", i+1);
                 queue_drain_step();
                 vTaskDelay(pdMS_TO_TICKS(100));
+
                 unsent = queue_count_unsent();
                 if (unsent <= 2) {
                     break;
                 }
             }
+
             if (unsent <= 2 && last_backlog_logged != 0) {
                 ESP_LOGI(TAG, "Queue backlog reduced to %u unsent; resuming live sends", (unsigned)unsent);
                 last_backlog_logged = 0;
             }
+
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
 
+        // HEARTBEAT
         if (do_hb) {
+            ESP_LOGI(TAG, "Sending heartbeat...");
             (void)http_send_heartbeat(&s_cfg);
             last_hb_us = now_us;
         }
+
+        // LOCATION
         if (do_loc) {
             bool has_fix = s_last_fix_valid;
             gps_fix_t fix = s_last_fix;
-            (void)http_send_location(&s_cfg, &fix, has_fix);
-            last_loc_us = now_us;
+
+            ESP_LOGI(TAG, "Sending location (has_fix=%d)", has_fix ? 1 : 0);
+            if (http_send_location(&s_cfg, &fix, has_fix) == ESP_OK) {
+                last_loc_us = now_us;
+                just_sent_live = true;
+            } else {
+                ESP_LOGW(TAG, "http_send_location failed");
+            }
         }
 
-        queue_drain_step();
+        // Queue drain (skip if we just sent live location)
+        if (!just_sent_live) {
+            queue_drain_step();
+        } else {
+            ESP_LOGI(TAG, "Skipping queue drain (just sent live location)");
+            just_sent_live = false;
+        }
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -1341,16 +1388,18 @@ static void ap_window_task(void *arg)
 
 static void wifi_start_sta_with_portal_window(const char *ssid, const char *password)
 {
-    wifi_config_t wifi_cfg = { 0 };
-    strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid));
-    strncpy((char *)wifi_cfg.sta.password, password ? password : "", sizeof(wifi_cfg.sta.password));
-
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    wifi_config_t wifi_cfg = {0};
+    strncpy((char *)wifi_cfg.sta.ssid, ssid, sizeof(wifi_cfg.sta.ssid) - 1);
+    strncpy((char *)wifi_cfg.sta.password, password ? password : "", sizeof(wifi_cfg.sta.password) - 1);
+    
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+
     wifi_ensure_started();
-
-    esp_wifi_connect();
-
+    esp_err_t err = esp_wifi_connect();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
+        ESP_ERROR_CHECK(err);
+    }
     ap_start_portal();
     xTaskCreate(ap_window_task, "ap_window_task", 3072, NULL, 3, NULL);
 }

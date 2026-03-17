@@ -77,13 +77,17 @@ table {
   color: #fff;
 }
 
-table th,
-table td {
-  padding: 12px;
+table th {
+  padding: 8px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+table td {
+  /* padding: 1px; */
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
  th {
   background: rgba(0, 0, 0, 0.2);
   font-weight: 600;
@@ -301,3 +305,22 @@ input[type="date"]:focus {
 }
 
 /* End Global form button styling */
+
+
+/* Toggle on and off */
+.bi-toggle-off {
+  color: #ff4949;
+  font-size: 2rem;
+  position: relative;
+  top: 5px;
+  left: 5px;
+}
+
+.bi-toggle-on {
+  color: #48b84b;
+  font-size: 2rem;
+  position: relative;
+  top: 5px;
+  left: 5px;
+}
+/* Toggle on and off */

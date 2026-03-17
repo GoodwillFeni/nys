@@ -66,8 +66,9 @@
           <th>Message Time</th>
           <th>Lat</th>
           <th>Lng</th>
+          <th>Sensor</th>
           <th>Received At</th>
-          <th>Payload</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -78,6 +79,18 @@
             <td>{{ formatDate(log.message_timestamp || log.device_timestamp || log.created_at) }}</td>
             <td>{{ log.lat ?? '-' }}</td>
             <td>{{ log.lng ?? '-' }}</td>
+            <!-- Sensor data -->
+            <td v-if="log.type === 'sensor' && log.payload.inputs?.input1">
+              <span v-if="log.payload.inputs?.input1.state == 0"> <!-- Fix this on the FW side make 1 = on and 0 = off -->
+                {{ log.payload.inputs?.input1.description ??'-' }} : <i class="bi bi-toggle-on"></i>
+              </span>
+
+              <span v-else>
+                {{ log.payload.inputs?.input1.description ??'-' }} : <i class="bi bi-toggle-off"></i>
+              </span>
+            </td>
+            <td v-else>-</td>
+            <!-- End sensor data -->
             <td>{{ formatDate(log.created_at) }}</td>
             <td>
               <button class="button-info" @click="togglePayload(log.id)">
@@ -436,6 +449,7 @@ export default {
         .then((response) => {
           const data = response.data?.data;
           this.logs = data?.items || [];
+          console.log(this.logs);
           this.pagination.page = data?.pagination?.page ?? 1;
           this.pagination.per_page = requestedPerPage;
           this.pagination.total = data?.pagination?.total ?? 0;

@@ -96,7 +96,7 @@ class AnimalController extends Controller
         AuditLogService::logCreate($animal, $request, "Created animal: {$animal->animal_name}");
     }
 
-    public function types()
+    public function types() // Fetch all animal types
     {
         $types = FarmAnimalType::where('deleted', '!=', 1)->get();
 
@@ -105,7 +105,7 @@ class AnimalController extends Controller
             'data' => $types
         ]);
     }
-    public function show(Request $request, FarmAnimal $animal)
+    public function show(Request $request, FarmAnimal $animal) // Fetch a single animal
     {
         // Determine account ID (same logic as index)
         $accountId = $request->account_id
@@ -126,7 +126,7 @@ class AnimalController extends Controller
             //'events'
         );
     }
-    public function breeds(Request $request)
+    public function breeds(Request $request) // Fetch all animal breeds
     {
         $accountId = $request->header('X-Account-ID');
 
@@ -142,57 +142,80 @@ class AnimalController extends Controller
         AuditLogService::logCreate($animal, $request, "Created animal: {$animal->animal_name}");
     }
 
-public function update(Request $request, FarmAnimal $animal)
-{
-    // Determine account ID (same logic as index)
-    $accountId = $request->account_id
-        ?? $request->header('X-Account-ID')
-        ?? optional($request->user())->account_id;
+public function update(Request $request, FarmAnimal $animal) // Update an animal
+    {
+        // Determine account ID (same logic as index)
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID')
+            ?? optional($request->user())->account_id;
 
-    if ($accountId && $animal->account_id != $accountId) {
-        abort(403, 'Unauthorized access to this animal');
-    }
+        if ($accountId && $animal->account_id != $accountId) {
+            abort(403, 'Unauthorized access to this animal');
+        }
 
-    // Prepare update data
-    $updateData = $request->all();
+        // Prepare update data
+        $updateData = $request->all();
 
-    // Map description to notes if notes not provided
-    if ($request->has('description') && !$request->has('notes')) {
-        $updateData['notes'] = $request->description;
-    }
+        // Map description to notes if notes not provided
+        if ($request->has('description') && !$request->has('notes')) {
+            $updateData['notes'] = $request->description;
+        }
 
-    // Validate the incoming data
-    $request->validate([
-        'animal_type_id' => 'sometimes|required|integer|exists:farm_animal_types,id',
-        'animal_tag' => [
-            'sometimes',
-            'required',
-            'numeric',
-            'between:1,10000000',
-            function ($attribute, $value, $fail) use ($animal) {
-                if ($value == $animal->animal_tag) return;
+        // Validate the incoming data
+        $request->validate([
+            'animal_type_id' => 'sometimes|required|integer|exists:farm_animal_types,id',
+            'animal_tag' => [
+                'sometimes',
+                'required',
+                'numeric',
+                'between:1,10000000',
+                function ($attribute, $value, $fail) use ($animal) {
+                    if ($value == $animal->animal_tag) return;
 
-                $exists = \App\Models\FarmAnimal::where('farm_id', $animal->farm_id)
-                    ->where('farm_tag', $value)
-                    ->where('id', '<>', $animal->id)
-                    ->exists();
-                if ($exists) {
-                    $fail('The '.$attribute.' has already been taken for this farm.');
+                    $exists = \App\Models\FarmAnimal::where('farm_id', $animal->farm_id)
+                        ->where('farm_tag', $value)
+                        ->where('id', '<>', $animal->id)
+                        ->exists();
+                    if ($exists) {
+                        $fail('The '.$attribute.' has already been taken for this farm.');
+                    }
                 }
-            }
-        ],
-        'sex' => 'sometimes|required|string',
-        'date_of_birth' => 'sometimes|required|date',
-        'name' => 'sometimes|nullable|string',
-        'notes' => 'sometimes|nullable|string',
-        'breed_id' => 'sometimes|required|integer|exists:farm_animal_breeds,id',
-    ]);
+            ],
+            'sex' => 'sometimes|required|string',
+            'date_of_birth' => 'sometimes|required|date',
+            'name' => 'sometimes|nullable|string',
+            'notes' => 'sometimes|nullable|string',
+            'breed_id' => 'sometimes|required|integer|exists:farm_animal_breeds,id',
+        ]);
 
-    // Update using mapped data
-    $oldValues = $animal->getOriginal();
-    $animal->update($updateData); // <-- use $updateData here
-    AuditLogService::logUpdate($animal, $oldValues, $request, "Updated animal: {$animal}");
+        // Update using mapped data
+        $oldValues = $animal->getOriginal();
+        $animal->update($updateData); // <-- use $updateData here
+        AuditLogService::logUpdate($animal, $oldValues, $request, "Updated animal: ");
 
-    return $animal;
-}
+        return $animal;
+    }
+
+public function destroy(Request $request, FarmAnimal $animal)
+    {
+        // Determine account ID
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID')
+            ?? optional($request->user())->account_id;
+
+        if ($accountId && $animal->account_id != $accountId) {
+            abort(403, 'Unauthorized access to this animal');
+        }
+
+        $animal->update([
+            'deleted' => 1
+        ]);
+
+        AuditLogService::logDelete($animal, $request, "Deleted animal:");
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Animal deleted successfully'
+        ]);
+    }
 }
