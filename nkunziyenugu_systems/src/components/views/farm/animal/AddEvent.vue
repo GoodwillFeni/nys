@@ -3,7 +3,7 @@
     <div class="login-container">
 
       <div class="login-right">
-        <h2>Add Animal Event</h2>
+        <h2>Add Event Type</h2>
 
         <form @submit.prevent="submit">
 
@@ -12,45 +12,40 @@
             <div class="input-group col">
               <select v-model="form.account_id" required @change="getFarms()">
                 <option value="" disabled>Select Account</option>
-                <option v-for="a in accounts" :key="a.id" :value="a.id">
-                  {{ a.name }}
+                <option v-for="account in accounts" :key="account.id" :value="account.id">
+                  {{ account.name }}
                 </option>
               </select>
             </div>
 
             <div class="input-group col">
-              <select v-model="form.farm_id" required>
-                <option value="" disabled>Select Farm</option>
-                <option v-for="f in farms" :key="f.id" :value="f.id">
-                  {{ f.name }}
+              <select v-model="form.farm_id">
+                <option value="">All Farms (Optional)</option>
+                <option v-for="farm in farms" :key="farm.id" :value="farm.id">
+                  {{ farm.name }}
                 </option>
               </select>
             </div>
           </div>
 
-          <!-- MODE -->
+          <!-- EVENT NAME -->
           <div class="input-group">
-            <select v-model="form.mode">
-              <option value="single">Single Animal</option>
-              <option value="bulk">Bulk (Farm / Type)</option>
-            </select>
+            <input
+              type="text"
+              v-model="form.event_type"
+              placeholder="Event Type (e.g Vaccination, Feeding)"
+              required
+            />
           </div>
 
-          <!-- EVENT INFO -->
+          <!-- DEFAULT COST -->
           <div class="row">
             <div class="input-group col">
-              <input v-model="form.event_type" placeholder="Event Type (e.g Vaccination)" required />
-            </div>
-
-            <div class="input-group col">
-              <input type="date" v-model="form.event_date" required />
-            </div>
-          </div>
-
-          <!-- COST -->
-          <div class="row">
-            <div class="input-group col">
-              <input type="number" v-model="form.cost" placeholder="Cost" required />
+              <input
+                type="number"
+                v-model="form.default_cost"
+                placeholder="Default Cost"
+              />
             </div>
 
             <div class="input-group col">
@@ -63,40 +58,23 @@
             </div>
           </div>
 
-          <!-- SINGLE -->
-          <div v-if="form.mode === 'single'" class="input-group">
-            <select v-model="form.animal_id">
-              <option value="" disabled>Select Animal</option>
-              <option v-for="a in animals" :key="a.id" :value="a.id">
-                {{ a.tag_number }}
-              </option>
-            </select>
-          </div>
-
-          <!-- BULK -->
-          <div v-if="form.mode === 'bulk'" class="input-group">
-            <select v-model="form.animal_type">
-              <option value="">All Animal Types</option>
-              <option v-for="t in animalTypes" :key="t.id" :value="t.name">
-                {{ t.name }}
-              </option>
-            </select>
-          </div>
-
-          <!-- META -->
+          <!-- DESCRIPTION -->
           <div class="input-group">
-            <textarea v-model="form.meta.notes" placeholder="Notes (optional)"></textarea>
+            <textarea
+              v-model="form.description"
+              placeholder="Description (optional)"
+            ></textarea>
           </div>
 
           <!-- BUTTONS -->
           <div class="row">
-            <div class="col-2">
+            <div class="col-4">
               <button type="submit" :disabled="loading" class="button-info">
-                {{ loading ? 'Saving...' : 'Save Event' }}
+                {{ loading ? 'Saving...' : 'Add Event Type' }}
               </button>
             </div>
 
-            <div class="col-2">
+            <div class="col-3">
               <button type="button" @click="$router.back()" class="button-warning">
                 Back
               </button>
@@ -116,30 +94,21 @@ import { useToast } from "vue-toastification";
 const toast = useToast();
 
 export default {
-  name: "AddAnimalEvent",
+  name: "AddEventType",
 
   data() {
     return {
       loading: false,
-
       accounts: [],
       farms: [],
-      animals: [],
-      animalTypes: [],
 
       form: {
         account_id: '',
         farm_id: '',
-        mode: 'single',
         event_type: '',
-        event_date: '',
-        cost: 0,
+        default_cost: '',
         cost_type: 'expense',
-        animal_id: '',
-        animal_type: '',
-        meta: {
-          notes: ''
-        }
+        description: ''
       }
     }
   },
@@ -154,7 +123,7 @@ export default {
       try {
         const res = await api.get("/accounts/available");
         this.accounts = res.data.accounts || [];
-      } catch (e) {
+      } catch (error) {
         toast.error("Failed to load accounts");
       }
     },
@@ -166,29 +135,8 @@ export default {
         });
 
         this.farms = res.data || [];
-      } catch (e) {
+      } catch (error) {
         toast.error("Failed to load farms");
-      }
-    },
-
-    async loadAnimals() {
-      try {
-        const res = await api.get("/farm/animals", {
-          params: { farm_id: this.form.farm_id }
-        });
-
-        this.animals = res.data || [];
-      } catch (e) {
-        toast.error("Failed to load animals");
-      }
-    },
-
-    async loadAnimalTypes() {
-      try {
-        const res = await api.get("/farm/animals/types");
-        this.animalTypes = res.data.data || [];
-      } catch (e) {
-        toast.error("Failed to load animal types");
       }
     },
 
@@ -196,32 +144,19 @@ export default {
       try {
         this.loading = true;
 
-        const url = this.form.mode === 'single'
-          ? '/animal-events/single'
-          : '/animal-events/bulk';
+        await api.post('/event-types', this.form);
 
-        await api.post(url, this.form);
+        toast.success('Event type added successfully');
 
-        toast.success("Event saved successfully");
+        this.$router.push('/Farm/EventTypes');
 
-        this.$router.push('/Farm/Dashboard');
-
-      } catch (e) {
-        toast.error(e.response?.data?.message || "Failed to save event");
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to add event type');
       } finally {
         this.loading = false;
       }
     }
 
-  },
-
-  watch: {
-    'form.farm_id'(val) {
-      if (val) {
-        this.loadAnimals();
-        this.loadAnimalTypes();
-      }
-    }
   }
 }
 </script>

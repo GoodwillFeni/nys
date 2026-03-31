@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class AnimalEvent extends Model
+class FarmAnimalEvent extends Model
 {
     protected $table = 'farm_animal_events';
 
@@ -14,12 +14,15 @@ class AnimalEvent extends Model
         'animal_id',
         'event_type',
         'event_date',
+        'cost',
+        'cost_type',
+        'batch_id',
         'meta',
         'created_by_user_id'
     ];
 
     protected $casts = [
-        'event_date' => 'date',
-        'meta' => 'json',
+        'meta' => 'array',
+        'event_date' => 'date'
     ];
 }

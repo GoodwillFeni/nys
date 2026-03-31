@@ -71,6 +71,7 @@ const routes = [
         props: true,
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
+    // Shop routes
     {
         path: '/Shop/Products',
         name: 'ShopProducts',
@@ -107,6 +108,13 @@ const routes = [
         component: () => import('../components/views/shop/ShopCashFlow.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
+    {
+        path: '/Shop/AddProduct/:id?',
+        name: 'AddProduct',
+        component: () => import('../components/views/shop/AddProduct.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin']}
+    },
+    //End shop routes 
 
     // Customer Portal
     {
@@ -124,7 +132,7 @@ const routes = [
     
     // End Protected Routes
 
-    //Farn Routes
+    //Farm Routes
     {
         path: '/Farm/FarmDashboard',
         name: 'FarmDashboard',
@@ -200,6 +208,18 @@ const routes = [
         name: 'AnimalDeviceLink',
         props: true,
         component: () => import('../components/views/farm/animal/AnimalDeviceLink.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/AddAnimalType',
+        name: 'AddAnimalType',
+        component: () => import('../components/views/farm/animal/AddAnimalType.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+    },
+    {
+        path: '/Farm/AddAnimalBreed',
+        name: 'AddAnimalBreed',
+        component: () => import('../components/views/farm/animal/AddAnimalBreed.vue'),
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     // End Farm Routes

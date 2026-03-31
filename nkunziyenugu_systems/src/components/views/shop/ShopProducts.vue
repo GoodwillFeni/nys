@@ -4,7 +4,6 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="m-0">Shop Products</h4>
         <div class="d-flex align-items-center gap-2">
-          <button v-if="isPrivileged" class="button-success" @click="openCreate">Add Product</button>
           <input
             class="form-control form-control-sm"
             style="width: 220px"
@@ -18,71 +17,6 @@
 
       <div v-if="error" class="alert alert-danger mt-3 mb-0">
         {{ error }}
-      </div>
-    </div>
-
-    <div v-if="isPrivileged && showForm" class="card p-3 mb-3">
-      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <div class="fw-bold">{{ form.id ? 'Edit Product' : 'Add Product' }}</div>
-        <button class="button-danger" @click="closeForm">Close</button>
-      </div>
-
-      <div class="row g-2 mt-2">
-        <div class="col-12 col-md-6">
-          <label class="form-label">Product Name</label>
-          <input class="form-control form-control-sm" v-model="form.product_name" type="text" />
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label">Product Type</label>
-          <input class="form-control form-control-sm" v-model="form.product_type" type="text" />
-        </div>
-        <div class="col-12">
-          <label class="form-label">Description</label>
-          <textarea class="form-control form-control-sm" v-model="form.description" rows="2"></textarea>
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label">Selling Price</label>
-          <input class="form-control form-control-sm" v-model.number="form.actual_price" type="number" min="0" step="0.01" @change="calPrice" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Stock Price</label>
-          <input class="form-control form-control-sm" v-model.number="form.stock_price" type="number" min="0" step="0.01" @change="calPrice" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Quantity</label>
-          <input class="form-control form-control-sm" v-model.number="form.qty" type="number" min="0" step="1" @change="calPrice" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Image</label>
-          <input class="form-control form-control-sm" type="file" accept="image/*" @change="onImgChange" />
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label">Price Percentage</label>
-          <input class="form-control form-control-sm" v-model.number="form.price_percentage" type="number" step="0.01" @change="calPrice" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Transport Percentage</label>
-          <input class="form-control form-control-sm" v-model.number="form.transport_percentage" type="number" step="0.01" @change="calPrice" />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Calculated Price No Profit</label>
-          <input class="form-control form-control-sm" v-model.number="form.cal_price_no_prof" type="number" step="0.01" readonly />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Calculated Price</label>
-          <input class="form-control form-control-sm" v-model.number="form.cal_price" type="number" step="0.01" readonly />
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label">Profit/Item</label>
-          <input class="form-control form-control-sm" v-model.number="form.prof_per_product" type="number" step="0.01" readonly />
-        </div>
-
-        <div class="col-12 d-flex gap-2 mt-1">
-          <button class="button-success" :disabled="saving" @click="saveProduct">{{ saving ? 'Saving...' : 'Save' }}</button>
-          <button v-if="form.id" class="button-danger" :disabled="saving" @click="deleteProduct(form.id)">Delete</button>
-        </div>
       </div>
     </div>
 
@@ -119,9 +53,7 @@
                 <button class="button-success" @click="addToCart(p)">
                   <i class="bi bi-cart-plus"></i>
                 </button>
-                <button v-if="isPrivileged" class="button-info" @click="openEdit(p)">
-                  <i class="bi bi-pencil-square"></i>
-                </button>
+
               </div>
 
               <div class="small mt-2" v-if="p.stock_level <= 0" style="color:#ffb3b3; font-weight:600">
@@ -194,12 +126,14 @@ export default {
   mounted() {
     this.fetchProducts()
   },
+
   methods: {
     formatMoney(v) {
       const n = Number(v)
       if (Number.isNaN(n)) return '0.00'
       return n.toFixed(2)
     },
+
     productImageUrl(imgPath) {
       const base = api.defaults.baseURL.replace(/\/api\/?$/, '')
       return `${base}/storage/${imgPath}`
@@ -243,6 +177,8 @@ export default {
       this.qtyById[product.id] = 1
       this.error = null
     },
+
+
     resetForm() {
       this.form = {
         id: null,
@@ -260,11 +196,7 @@ export default {
         img: null,
       }
     },
-    openCreate() {
-      this.resetForm()
-      this.showForm = true
-      this.error = null
-    },
+
     openEdit(p) {
       this.form = {
         id: p.id,
@@ -288,84 +220,7 @@ export default {
       this.showForm = false
       this.resetForm()
     },
-    onImgChange(e) {
-      const f = e?.target?.files?.[0]
-      this.form.img = f || null
-    },
-    buildProductFormData() {
-      const fd = new FormData()
-      fd.append('product_name', this.form.product_name)
-      fd.append('product_type', this.form.product_type || '')
-      fd.append('description', this.form.description || '')
-      fd.append('actual_price', String(Number(this.form.actual_price) || 0))
-      fd.append('stock_price', String(Number(this.form.stock_price) || 0))
-      fd.append('cal_price_no_prof', String(Number(this.form.cal_price_no_prof) || 0))
-      fd.append('cal_price', String(Number(this.form.cal_price) || 0))
-      fd.append('prof_per_product', String(Number(this.form.prof_per_product) || 0))
-      fd.append('qty', String(Number(this.form.qty) || 0))
-      if (this.form.img) fd.append('img', this.form.img)
-      return fd
-    },
-    percentage(num, per) {
-      const n = Number(num)
-      const p = Number(per)
-      if (!n || Number.isNaN(n) || Number.isNaN(p)) return 0
-      return (n / 100) * p
-    },
-    calPrice() {
-      const stockPrice = Number(this.form.stock_price) || 0
-      const qty = Number(this.form.qty) || 0
-      const pricePerc = Number(this.form.price_percentage) || 0
-      const transportPerc = Number(this.form.transport_percentage) || 0
 
-      if (!qty || qty <= 0) {
-        this.form.cal_price = 0
-        this.form.cal_price_no_prof = 0
-        this.form.prof_per_product = 0
-        return
-      }
-
-      const percent = this.percentage(stockPrice, pricePerc)
-      const calPriceNoProfExtra = this.percentage(stockPrice, transportPerc)
-
-      const percentPrice = stockPrice + percent
-      const calPrice = percentPrice / qty
-      this.form.cal_price = Number(calPrice.toFixed(2))
-
-      const calPriceNo = stockPrice + calPriceNoProfExtra
-      const calNoProf = calPriceNo / qty
-      this.form.cal_price_no_prof = Number(calNoProf.toFixed(2))
-
-      const actualPrice = Number(this.form.actual_price) || 0
-      this.form.prof_per_product = Number((actualPrice - this.form.cal_price_no_prof).toFixed(2))
-    },
-    async saveProduct() {
-      if (!this.isPrivileged) return
-
-      this.saving = true
-      this.error = null
-      try {
-        this.calPrice()
-        const fd = this.buildProductFormData()
-        if (this.form.id) {
-          fd.append('_method', 'PUT')
-          await api.post(`/shop/products/${this.form.id}`, fd, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          })
-        } else {
-          await api.post('/shop/products', fd, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          })
-        }
-
-        this.closeForm()
-        await this.fetchProducts()
-      } catch (e) {
-        this.error = e?.response?.data?.message || e.message || 'Failed to save product'
-      } finally {
-        this.saving = false
-      }
-    },
     async deleteProduct(id) {
       if (!this.isPrivileged) return
 

@@ -67,3 +67,8 @@ The pixel number indicates the pixel position in the LED strip. For a single LED
 * If the LED isn't blinking, check the GPIO or the LED type selection in the `Example Configuration` menu.
 
 For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
+
+
+These commands are required for starting up the esp project
+powershell -ExecutionPolicy Bypass -File "C:\esp\v5.5.2\esp-idf\install.ps1"
+& 'C:\Espressif\tools\Microsoft.v5.5.2.PowerShell_profile.ps1'

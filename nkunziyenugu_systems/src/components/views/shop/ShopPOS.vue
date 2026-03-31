@@ -28,6 +28,7 @@
               placeholder="Search"
               v-model="search"
             />
+            <button v-if="isPrivileged" class="button-success" @click="AddProduct()">Add Product</button>
           </div>
 
           <div v-if="loadingProducts" class="mt-3">Loading...</div>
@@ -56,6 +57,9 @@
                       v-model.number="qtyById[p.id]"
                     />
                     <button class="button-success" @click="addItem(p)"><i class="bi bi-cart-plus"></i></button>
+                    <button v-if="isPrivileged" class="button-info" @click="editProduct(p)">
+                       <i class="bi bi-pencil-square"></i>
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -242,6 +246,13 @@ export default {
     }
   },
   computed: {
+    isPrivileged() {
+      return (
+        !!this.$store?.getters?.isAdmin ||
+        !!this.$store?.getters?.isOwner ||
+        !!this.$store?.getters?.isSuperAdmin
+      )
+    },
     filteredProducts() {
       const s = String(this.search || '').toLowerCase()
       if (!s) return this.products
@@ -471,7 +482,13 @@ export default {
       } finally {
         this.creatingCustomer = false
       }
-    }
+    },
+    AddProduct() {
+      this.$router.push('/Shop/AddProduct')
+    },
+    editProduct(p) {
+      this.$router.push(`/Shop/AddProduct/${p.id}`)
+    },
   }
 }
 </script>

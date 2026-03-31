@@ -94,7 +94,7 @@ export default {
     return {
       loading: false,
       accounts: [],
-      selectedAccount: null,
+      selectedAccount: '',
       form: {
         name: "",
         surname: "",

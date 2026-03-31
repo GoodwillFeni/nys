@@ -1,16 +1,13 @@
 idf_component_register(
-    SRCS "main.c"
+    SRCS "wifi.c"
     INCLUDE_DIRS "."
     REQUIRES
-        nvs_flash
+        esp_wifi
         esp_netif
         esp_event
         driver
         freertos
         nys_common
-        comms
-        wifi
-        gps
-        input
         web
+        comms
 )

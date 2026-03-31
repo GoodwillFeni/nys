@@ -78,7 +78,6 @@
             </button>
 
             <button class="button-info" @click="$router.push({ name: 'AddAnimalEvent', params: { id: animal.id } })">
-              <!-- <i class="bi bi-plus-square"></i> -->
               <i class="bi bi-calendar2-event"></i>
             </button>
 
@@ -129,14 +128,10 @@ export default {
       this.$router.push({ name: "AddAnimal" });
     },
     addType() {
-      //TODO
-      toast.info("Animal type management coming soon!")
-      // this.$router.push({ name: "AddAnimalType" });
+      this.$router.push({ name: "AddAnimalType" });
     },
     addBreed() {
-      //TODO
-      toast.info("Animal breed management coming soon!")
-      // this.$router.push({ name: "AddAnimalBreed" });
+      this.$router.push({ name: "AddAnimalBreed" });
     },
 
     DeviceLogs(animal) {

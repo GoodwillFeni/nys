@@ -1,16 +1,15 @@
 idf_component_register(
-    SRCS "main.c"
+    SRCS "comms.c"
     INCLUDE_DIRS "."
     REQUIRES
+        esp_http_client
+        esp_timer
+        esp_wifi
         nvs_flash
-        esp_netif
-        esp_event
-        driver
         freertos
+        json
+        mbedtls
         nys_common
-        comms
         wifi
         gps
-        input
-        web
 )

@@ -10,6 +10,7 @@
     color: #fff;
     cursor: pointer;
     margin: 5px;
+    width: max-content;
 }
 
 .button-info:hover {
@@ -26,6 +27,7 @@
     color: #fff;
     cursor: pointer;
     margin: 5px;
+    width: max-content;
 }
 .button-danger:hover {
     background: linear-gradient(135deg, #c54730, #5a1004);
@@ -41,6 +43,7 @@
     color: #fff;
     cursor: pointer;
     margin: 5px;
+    width: max-content;
 }
 .button-success:hover {
     background: linear-gradient(135deg, #48b84b, #0f5c14);
@@ -56,6 +59,7 @@
     color: #fff;
     cursor: pointer;
     margin: 5px;
+    width: max-content;
 }
 .button-warning:hover {
     background: linear-gradient(135deg, #ffba4b, #d66c02);
@@ -71,10 +75,11 @@
 
 
 table {
-  width: 100%;
+  width: 99%;
   border-collapse: collapse;
   background: linear-gradient(135deg, #27253f, #605a6d);
   color: #fff;
+  margin-left: 5px;
 }
 
 table th {
@@ -197,6 +202,8 @@ label {
 /* RIGHT */
 .form-right {
   flex: 1;
+  background: linear-gradient(135deg, #27253f, #605a6d);
+  color: #ffffff;
   padding: 50px;
   display: flex;
   flex-direction: column;
@@ -218,7 +225,7 @@ label {
   display: block;
   margin-bottom: 5px;
   font-weight: 16;
-  color: #333;
+  color: #ffffff;
 }
 
 .input-group input,
@@ -253,7 +260,6 @@ input[type="date"]:focus {
   border-color: #6a5cff;
 }
 
-/* TOOLTIP */
 /* TOOLTIP */
 .input-group {
   position: relative;

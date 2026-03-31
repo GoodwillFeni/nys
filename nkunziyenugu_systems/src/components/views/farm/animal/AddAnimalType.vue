@@ -2,7 +2,7 @@
     <div class="login-wrapper">
     <div class="login-container">
       <div class="login-right">
-        <h2>Add New Animal</h2>
+        <h2>Add New Animal Type</h2>
         <form @submit.prevent="submit">
           <div class="row">
             <div class="input-group col"> 
@@ -15,7 +15,7 @@
             </div>
 
             <div class="input-group col"> 
-              <select v-model="form.farm_id" required placeholder="Select farm" @change="getAnimalTypes()">
+              <select v-model="form.farm_id" required placeholder="Select farm">
                 <option value="" disabled selected>Select Farm to add animal</option>
                 <option :value="farm.id" v-for="farm in farms" :key="farm.id">
                   {{ farm.name }}
@@ -26,59 +26,18 @@
 
           <div class="row">
             <div class="input-group col">
-              <input
-                type="number"
-                v-model.number="form.animal_tag"
-                min="1"
-                max="100000"
-                placeholder="Enter ear tag number"
-                required
-              />
-            </div>
-
-            <div class="input-group col"> 
-              <select v-model="form.animal_type_id" required placeholder="Select animal type" @change="getAnimalBreeds()">
-                <option value="" disabled selected>Select Animal Type</option>
-                <option :value="animalType.id" v-for="animalType in animalTypes" :key="animalType.id">
-                  {{ animalType.name }}
-                </option>
-              </select>
+              <input type="number" v-model.number="form.animal_type_name" min="1" max="100000" placeholder="Name of the animal type" required />
             </div>
           </div>
 
-          <div class="row">
-            <div class="input-group col">
-              <select v-model="form.sex" required>
-                  <option value="" disabled selected>Select Animal Sex</option>
-                  <option :value="sex" v-for="sex in animalSexes" :key="sex">
-                    {{ sex }}
-                  </option>
-              </select>
-            </div>
-
-            <div class="input-group col">
-              <select v-model="form.breed_id" required>
-                  <option value="" disabled selected>Select Animal Breed</option>
-                  <option :value="breed.id" v-for="breed in animalBreeds" :key="breed">
-                    {{ breed.breed_name }}
-                  </option>
-              </select>
-            </div>
-          </div>
-
-          <div class="input-group col">
-            <label for="date_of_birth">Date of Birth:</label>
-            <input type="date" v-model="form.date_of_birth"  required />
-            <span style="font-size: 12px; color: #888;">Date of birth is required for accurate age tracking, if not sure use estimated data.</span>
-          </div>
           <div class="input-group">
             <input type="text" v-model="form.description" placeholder="Enter animal description for easy identification" required />
           </div>
           
           <div class="row">
-            <div class="col-2" >
+            <div class="col-3" >
                 <button type="submit" :disabled="loading" class="button-info">
-                    {{ loading ? 'Adding animal...' : 'Add Animal' }}
+                    {{ loading ? 'Adding animal type...' : 'Add Animal Type' }}
                 </button>
             </div>
             <div class="col-2">
@@ -99,24 +58,16 @@ import { useToast } from "vue-toastification";
 const toast = useToast();
 
 export default {
-  name: "AddFarm",
+  name: "AddAnimalType",
   data() {
     return {
         loading: false,
-        animalTypes: [],
         accounts: [],
         farms: [],
-        animalSexes: ['Male', 'Female'],
-        animalBreeds: [],
         accountIds: [localStorage.getItem('account_id')],
         form: {
-            animal_tag: null,
-            name: '',
+            animal_type_name: '',
             account_id: '',
-            animal_type_id: '',
-            date_of_birth: '',
-            sex: '',
-            breed_id: '',
             farm_id: '',
             description: '',
         }
@@ -163,49 +114,6 @@ export default {
             toast.error(error.response?.data?.message || "Failed to load farms.");
             this.farms = [];
         });
-    },
-
-    getAnimalTypes() {
-        api.get("/farm/animals/types", {
-            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        })
-        
-        .then(response => {
-            if (response.data) {
-                this.animalTypes = response.data.data
-                console.log(this.animalTypes)
-            } else {
-                this.animalTypes = [];
-            }
-        })
-        
-        .catch(error => {
-            toast.error(error.response?.data?.message || "Failed to load animal types.");
-            this.animalTypes = [];
-        })
-    },
-
-    getAnimalBreeds() {
-        api.get("/farm/animals/breeds", {
-            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            params: {
-                animal_type_id: this.form.animal_type_id
-            }
-        })
-        
-        .then(response => {
-            if (response.data) {
-                this.animalBreeds = response.data
-                console.log(this.animalBreeds)
-            } else {
-                this.animalBreeds = [];
-            }
-        })
-        
-        .catch(error => {
-            toast.error(error.response?.data?.message || "Failed to load animal breeds.");
-            this.animalBreeds = [];
-        })
     },
 
     async submit() {

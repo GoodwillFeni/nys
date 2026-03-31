@@ -38,7 +38,7 @@
             <button @click="editUser(user)" class="button-info">
               <i class="bi bi-pencil-square"></i>
             </button>
-            <button @click="deleteUser(user)" class="button-danger" v-if="isImpersonating === true">
+            <button @click="deleteUser(user)" class="button-danger">
               <i class="bi bi-trash"></i>
             </button>
           </td>

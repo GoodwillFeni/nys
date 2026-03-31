@@ -19,10 +19,11 @@ use App\Http\Controllers\Api\ShopCustomerPortalController;
 use App\Http\Controllers\Api\ShopCreditRequestController;
 use App\Http\Controllers\Api\FarmController;
 use App\Http\Controllers\Api\AnimalController;
-use App\Http\Controllers\Api\AnimalEventController;
+use App\Http\Controllers\AnimalEventController;
 use App\Http\Controllers\Api\AnimalDeviceLinkController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\FarmReportController;
+
 
 
 
@@ -120,7 +121,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
     Route::put('farm/animals/{animal}', [AnimalController::class, 'update']);
     Route::delete('farm/animals/{animal}', [AnimalController::class, 'destroy']);
-    Route::post('farm/animals/{animal}/events', [AnimalEventController::class, 'store']);
+
+    // Route::post('farm/animals/{animal}/events', [AnimalEventController::class, 'store']);
+    Route::post('/single', [AnimalEventController::class, 'storeSingle']);
+    Route::post('/bulk', [AnimalEventController::class, 'storeBulk']);
+    Route::get('/list', [AnimalEventController::class, 'list']);
+    Route::get('/dashboard', [AnimalEventController::class, 'dashboard']);
 
     // Animal Device Links
     Route::post('farm/animals/devices/link', [AnimalDeviceLinkController::class, 'linkDevice']);

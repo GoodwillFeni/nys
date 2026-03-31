@@ -3,7 +3,6 @@
     <div class="login-container">
       <div class="login-right">
         <h2>Add Account</h2>
-
         <form @submit.prevent="addAccount">
           <div class="input-group">
             <input 

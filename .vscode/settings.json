@@ -1,4 +1,5 @@
 {
     "idf.portWin": "COM5",
-    "cmake.sourceDirectory": "C:/G Feni/Personal/projects/NYS/nys_esp"
+    "cmake.sourceDirectory": "C:/G Feni/Personal/projects/NYS/nys_esp",
+    "idf.currentSetup": "C:\\esp\\v5.5.2\\esp-idf"
 }
