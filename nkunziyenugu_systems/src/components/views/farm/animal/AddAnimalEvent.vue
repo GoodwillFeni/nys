@@ -7,7 +7,7 @@
 
         <form @submit.prevent="submit">
 
-          <!-- ACCOUNT + FARM -->
+          <!-- ACCOUNT AND FARM -->
           <div class="row">
             <div class="input-group col">
               <select v-model="form.account_id" required @change="getFarms()">
@@ -28,7 +28,7 @@
             </div>
           </div>
 
-          <!-- MODE -->
+          <!-- MODE (single/bulk) -->
           <div class="input-group">
             <select v-model="form.mode">
               <option value="single">Single Animal</option>
@@ -50,7 +50,7 @@
           <!-- COST -->
           <div class="row">
             <div class="input-group col">
-              <input type="number" v-model="form.cost" placeholder="Cost" required />
+              <input type="number" v-model.number="form.cost" placeholder="Cost" required />
             </div>
 
             <div class="input-group col">
@@ -59,6 +59,7 @@
                 <option value="running">Running</option>
                 <option value="income">Income</option>
                 <option value="loss">Loss</option>
+                <option value="birth">Birth</option>
               </select>
             </div>
           </div>
@@ -68,7 +69,7 @@
             <select v-model="form.animal_id">
               <option value="" disabled>Select Animal</option>
               <option v-for="a in animals" :key="a.id" :value="a.id">
-                {{ a.tag_number }}
+                {{ a.animal_tag }} - {{ a.animal_name || a.animal_type?.name || '' }}
               </option>
             </select>
           </div>
@@ -118,9 +119,14 @@ const toast = useToast();
 export default {
   name: "AddAnimalEvent",
 
+  props: {
+    id: { type: [String, Number], default: null }
+  },
+
   data() {
     return {
       loading: false,
+      prefilling: false,
 
       accounts: [],
       farms: [],
@@ -132,7 +138,7 @@ export default {
         farm_id: '',
         mode: 'single',
         event_type: '',
-        event_date: '',
+        event_date: new Date().toISOString().slice(0, 10),
         cost: 0,
         cost_type: 'expense',
         animal_id: '',
@@ -144,12 +150,15 @@ export default {
     }
   },
 
-  mounted() {
-    this.getAccounts();
+  async mounted() {
+    await this.getAccounts();
+
+    if (this.id) {
+      await this.prefillFromAnimal(this.id);
+    }
   },
 
   methods: {
-
     async getAccounts() {
       try {
         const res = await api.get("/accounts/available");
@@ -177,7 +186,7 @@ export default {
           params: { farm_id: this.form.farm_id }
         });
 
-        this.animals = res.data || [];
+        this.animals = res.data.data || [];
       } catch (e) {
         toast.error("Failed to load animals");
       }
@@ -189,6 +198,32 @@ export default {
         this.animalTypes = res.data.data || [];
       } catch (e) {
         toast.error("Failed to load animal types");
+      }
+    },
+
+    async prefillFromAnimal(animalId) {
+      try {
+        this.prefilling = true;
+        const res = await api.get(`/farm/animals/${animalId}`);
+        const animal = res.data;
+
+        // Set account and load farms
+        this.form.account_id = animal.account_id;
+        await this.getFarms();
+
+        // Set farm and load animals + types
+        this.form.farm_id = animal.farm_id;
+        await Promise.all([this.loadAnimals(), this.loadAnimalTypes()]);
+
+        // Set animal (single mode) and animal type (bulk mode)
+        this.form.animal_id = animal.id;
+        if (animal.animal_type) {
+          this.form.animal_type = animal.animal_type.name;
+        }
+      } catch (e) {
+        toast.error("Failed to load animal details");
+      } finally {
+        this.prefilling = false;
       }
     },
 
@@ -204,7 +239,7 @@ export default {
 
         toast.success("Event saved successfully");
 
-        this.$router.push('/Farm/Dashboard');
+        this.$router.back();
 
       } catch (e) {
         toast.error(e.response?.data?.message || "Failed to save event");
@@ -217,7 +252,7 @@ export default {
 
   watch: {
     'form.farm_id'(val) {
-      if (val) {
+      if (val && !this.prefilling) {
         this.loadAnimals();
         this.loadAnimalTypes();
       }

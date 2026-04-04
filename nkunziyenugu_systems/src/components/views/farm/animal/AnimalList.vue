@@ -25,6 +25,7 @@
             <button type="button" class="button-info" @click="addAnimal()">Add Animal</button>
             <button type="button" class="button-info" @click="addType()">Add Type</button>
             <button type="button" class="button-info" @click="addBreed()">Add Breed</button>
+            <button type="button" class="button-info" @click="$router.push({ name: 'AnimalEventList' })">Events</button>
         </div>
       </div>
     </div>

@@ -21,6 +21,8 @@
 #include "cJSON.h"
 #include "mbedtls/md.h"
 
+#include "driver/gpio.h"
+
 #include "nys_common.h"
 #include "wifi.h"
 #include "gps.h"
@@ -539,21 +541,35 @@ void queue_push_sample(void)
 
     if (has_fix) {
         rec.has_coords  = 1;
+        rec.fix         = 1;
         rec.lat_e6      = (int32_t)lrint(fix.lat_deg * 1000000.0);
         rec.lon_e6      = (int32_t)lrint(fix.lon_deg * 1000000.0);
         rec.fix_quality = (int16_t)fix.fix_quality;
         rec.sats_used   = (int16_t)fix.sats_used;
+        rec.last_known  = 0;
+    } else if (gps_get_last_fix(&fix)) {
+        // No current fix but have a last known position
+        rec.has_coords  = 1;
+        rec.fix         = 0;
+        rec.lat_e6      = (int32_t)lrint(fix.lat_deg * 1000000.0);
+        rec.lon_e6      = (int32_t)lrint(fix.lon_deg * 1000000.0);
+        rec.fix_quality = 0;
+        rec.sats_used   = 0;
         rec.last_known  = 1;
     }
 
     char key[8];
     queue_key_for_idx(key, s_queue_widx);
-    (void)nvs_set_blob(h, key, &rec, sizeof(rec));
+    esp_err_t wr_err = nvs_set_blob(h, key, &rec, sizeof(rec));
     s_queue_widx = (s_queue_widx + 1) % NYS_QUEUE_SIZE;
     queue_save_meta_locked(h);
-    (void)nvs_commit(h);
+    esp_err_t cm_err = nvs_commit(h);
     nvs_close(h);
     xSemaphoreGive(s_queue_mutex);
+
+    ESP_LOGI(TAG, "Queue push: seq=%u idx=%s fix=%d coords=%d wr=%s commit=%s",
+             (unsigned)rec.seq, key, rec.fix, rec.has_coords,
+             esp_err_to_name(wr_err), esp_err_to_name(cm_err));
 }
 
 uint32_t queue_count_unsent(void)
@@ -597,15 +613,25 @@ uint32_t queue_purge_sent(void)
 
 void queue_drain_step(void)
 {
-    if (!s_queue_mutex) return;
-    if (!(xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT)) return;
-    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+    if (!s_queue_mutex) {
+        ESP_LOGW(TAG, "drain: no mutex");
+        return;
+    }
+    if (!(xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT)) {
+        ESP_LOGW(TAG, "drain: WiFi not connected");
+        return;
+    }
+    if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+        ESP_LOGW(TAG, "drain: mutex timeout");
+        return;
+    }
 
     nvs_handle_t    h;
     uint32_t        best_idx = UINT32_MAX, best_seq = 0;
     nys_queue_rec_t best = {0};
 
     if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGE(TAG, "drain: NVS open failed");
         xSemaphoreGive(s_queue_mutex); return;
     }
 
@@ -618,8 +644,12 @@ void queue_drain_step(void)
     }
 
     if (best_idx == UINT32_MAX) {
+        ESP_LOGI(TAG, "drain: queue empty");
         nvs_close(h); xSemaphoreGive(s_queue_mutex); return;
     }
+
+    ESP_LOGI(TAG, "drain: found seq=%u idx=%u fix=%d coords=%d",
+             (unsigned)best.seq, (unsigned)best_idx, best.fix, best.has_coords);
 
     if (best.queued_at_epoch_s == 0) {
         int64_t now_epoch = time_now_epoch_s();
@@ -636,7 +666,13 @@ void queue_drain_step(void)
     nvs_close(h);
     xSemaphoreGive(s_queue_mutex);
 
-    if (http_send_location_record(&s_cfg, &best) != ESP_OK) return;
+    ESP_LOGI(TAG, "drain: sending seq=%u to %s", (unsigned)best.seq, s_cfg.api_url);
+    esp_err_t send_err = http_send_location_record(&s_cfg, &best);
+    if (send_err != ESP_OK) {
+        ESP_LOGE(TAG, "drain: HTTP send failed: %s", esp_err_to_name(send_err));
+        return;
+    }
+    ESP_LOGI(TAG, "drain: HTTP send OK for seq=%u", (unsigned)best.seq);
 
     if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
     if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
@@ -696,8 +732,14 @@ static void send_task(void *arg)
         if (unsent > 0) {
             ESP_LOGI(TAG, "Queue: %u unsent", (unsigned)unsent);
             for (int i = 0; i < 6 && queue_count_unsent() > 0; i++) {
+                // LED: fast flash (twice per second) while sending
+                gpio_set_level(LED_GPIO, LED_ON);
                 queue_drain_step();
-                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_GPIO, LED_OFF);
+                vTaskDelay(pdMS_TO_TICKS(250));
+                gpio_set_level(LED_GPIO, LED_ON);
+                vTaskDelay(pdMS_TO_TICKS(250));
+                gpio_set_level(LED_GPIO, LED_OFF);
             }
         }
 

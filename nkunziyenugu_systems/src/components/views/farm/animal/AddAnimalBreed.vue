@@ -172,19 +172,19 @@ export default {
     async submit() {
       try {
         this.loading = true;
-        // Ensure account_id is set from localStorage if not already selected
-        const accountId = this.form.account_id || localStorage.getItem('account_id');
-        
-        await api.post('farm/animals', {
-          ...this.form,
-          account_id: accountId,
+
+        await api.post('farm/animals/breeds', {
+          account_id: this.form.account_id,
+          animal_type_id: this.form.animal_type_id,
+          breed_name: this.form.animal_breed_name,
+          description: this.form.description,
         });
 
-        toast.success('Animal added successfully!');
-        this.$router.push('/Farm/AnimalList');
+        toast.success('Animal breed added successfully!');
+        this.$router.back();
       } catch (error) {
         console.log(error.response?.data?.message)
-        toast.error(error.response?.data?.message || 'Failed to add animal');
+        toast.error(error.response?.data?.message || 'Failed to add animal breed');
       } finally {
         this.loading = false;
       }

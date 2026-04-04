@@ -15,6 +15,11 @@
 #define TEST_INPUT_GPIO  1
 #define TEST_OUTPUT_GPIO 2
 
+// Built-in LED on ESP32-C3 Super Mini V2 (active LOW)
+#define LED_GPIO         8
+#define LED_ON           0
+#define LED_OFF          1
+
 // ─── Application constants ───────────────────────────────────────────────────
 #define NYS_API_URL             "http://192.168.101.177:8000/api/device/message"
 #define NYS_WIFI_AP_SSID_PREFIX "NYS_"
@@ -29,7 +34,9 @@
 #define NYS_TIME_NS              "time"
 #define NYS_TIME_VALID_EPOCH_MIN  1700000000
 
-#define NYS_AP_WINDOW_MS 60000
+#define NYS_AP_WINDOW_MS     60000
+#define INPUT_DEBOUNCE_MS    2000
+#define GPS_FIX_TIMEOUT_S    300     // 5 minutes
 
 // ─── Saved networks ───────────────────────────────────────────────────────────
 #define NYS_MAX_NETWORKS  3

@@ -25,4 +25,14 @@ class FarmAnimalEvent extends Model
         'meta' => 'array',
         'event_date' => 'date'
     ];
+
+    public function animal()
+    {
+        return $this->belongsTo(FarmAnimal::class, 'animal_id');
+    }
+
+    public function farm()
+    {
+        return $this->belongsTo(Farm::class, 'farm_id');
+    }
 }

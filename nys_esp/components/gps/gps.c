@@ -10,6 +10,7 @@
 #include "freertos/event_groups.h"
 
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
@@ -210,119 +211,227 @@ static bool nmea_parse_rmc(char *line, int64_t *epoch_out)
     return true;
 }
 
-// ────────── UART Reader Task ──────────
-static void gps_uart_task(void *arg)
+// ────────── UBX Helpers (ZOE-M8Q) ──────────
+
+// Compute UBX Fletcher checksum over class, id, length, and payload
+static void ubx_checksum(const uint8_t *data, size_t len, uint8_t *ck_a, uint8_t *ck_b)
+{
+    uint8_t a = 0, b = 0;
+    for (size_t i = 0; i < len; i++) {
+        a += data[i];
+        b += a;
+    }
+    *ck_a = a;
+    *ck_b = b;
+}
+
+// Send a raw UBX command on GPS_UART
+static esp_err_t gps_send_ubx(uint8_t cls, uint8_t id,
+                               const uint8_t *payload, uint16_t payload_len)
+{
+    // Header: sync(2) + class(1) + id(1) + length(2) + payload + checksum(2)
+    size_t frame_len = 2 + 1 + 1 + 2 + payload_len + 2;
+    uint8_t *frame = malloc(frame_len);
+    if (!frame) return ESP_ERR_NO_MEM;
+
+    frame[0] = 0xB5;  // sync char 1
+    frame[1] = 0x62;  // sync char 2
+    frame[2] = cls;
+    frame[3] = id;
+    frame[4] = (uint8_t)(payload_len & 0xFF);         // length LSB
+    frame[5] = (uint8_t)((payload_len >> 8) & 0xFF);   // length MSB
+
+    if (payload && payload_len > 0) {
+        memcpy(&frame[6], payload, payload_len);
+    }
+
+    uint8_t ck_a, ck_b;
+    ubx_checksum(&frame[2], 4 + payload_len, &ck_a, &ck_b);
+    frame[6 + payload_len]     = ck_a;
+    frame[6 + payload_len + 1] = ck_b;
+
+    int written = uart_write_bytes(GPS_UART, frame, frame_len);
+    free(frame);
+
+    if (written < 0 || (size_t)written != frame_len) {
+        ESP_LOGE(TAG, "UBX write failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "UBX sent: class=0x%02X id=0x%02X len=%u", cls, id, payload_len);
+    return ESP_OK;
+}
+
+// Put ZOE-M8Q into backup (sleep) mode via UBX-RXM-PMREQ
+// Duration=0 means indefinite — wakes on UART activity or EXTINT
+static esp_err_t gps_enter_backup(void)
+{
+    // UBX-RXM-PMREQ v0: 8-byte payload
+    // bytes 0-3: duration (U4, little-endian) — 0 = indefinite
+    // bytes 4-7: flags (X4) — bit 1 = backup mode
+    uint8_t payload[8] = {
+        0x00, 0x00, 0x00, 0x00,   // duration = 0 (indefinite)
+        0x02, 0x00, 0x00, 0x00,   // flags = 0x02 (backup)
+    };
+
+    esp_err_t err = gps_send_ubx(0x02, 0x41, payload, sizeof(payload));
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "GPS entering backup (sleep) mode");
+    }
+    return err;
+}
+
+// Wake GPS by sending bytes on UART — ZOE-M8Q wakes on any UART activity
+static void gps_wake(void)
+{
+    uint8_t wake_bytes[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
+    uart_write_bytes(GPS_UART, wake_bytes, sizeof(wake_bytes));
+    ESP_LOGI(TAG, "GPS wake signal sent");
+
+    // Flush any stale data in the RX buffer from before sleep
+    uart_flush_input(GPS_UART);
+
+    // Give the module time to start up and begin outputting NMEA
+    vTaskDelay(pdMS_TO_TICKS(1000));
+}
+
+// ────────── GPS Duty-Cycle Task ──────────
+// Replaces the old always-on gps_uart_task + gps_sample_task.
+// Cycle: wake GPS → read NMEA until fix or 5min timeout → queue sample → sleep GPS
+static void gps_duty_cycle_task(void *arg)
 {
     (void)arg;
     uint8_t *buf = malloc(512);
     if (!buf) { ESP_LOGE(TAG, "No memory for GPS buffer"); vTaskDelete(NULL); return; }
 
-    int64_t no_data_ticks = 0;
-    char line[128];
-    size_t line_len = 0;
-    gps_fix_t fix = {0};
-
     while (1) {
-        int len = uart_read_bytes(GPS_UART, buf, 512, pdMS_TO_TICKS(250));
-        if (len <= 0) {
-            if (++no_data_ticks >= 4) {
-                size_t buffered = 0;
-                uart_get_buffered_data_len(GPS_UART, &buffered);
-                ESP_LOGW(TAG, "GPS: no data (rx buffered=%u)", (unsigned)buffered);
-                no_data_ticks = 0;
+        // ── Phase 1: Wake GPS ────────────────────────────────────────────────
+        gps_wake();
+
+        // ── Phase 2: Read NMEA until fix or timeout ──────────────────────────
+        bool     got_fix    = false;
+        int64_t  start_us   = esp_timer_get_time();
+        int64_t  timeout_us = (int64_t)GPS_FIX_TIMEOUT_S * 1000000LL;
+        char     line[128];
+        size_t   line_len   = 0;
+        gps_fix_t fix       = {0};
+
+        ESP_LOGI(TAG, "GPS awake — waiting for fix (timeout %ds)...", GPS_FIX_TIMEOUT_S);
+
+        int64_t last_led_toggle_us = 0;
+        bool    led_state          = false;
+
+        while (!got_fix) {
+            int64_t elapsed_us = esp_timer_get_time() - start_us;
+            if (elapsed_us >= timeout_us) {
+                ESP_LOGW(TAG, "GPS fix timeout after %ds", GPS_FIX_TIMEOUT_S);
+                break;
             }
-            continue;
-        }
-        no_data_ticks = 0;
 
-        for (int i = 0; i < len; i++) {
-            uint8_t c = buf[i];
-            if (c == '\r') continue;
-            if (c == '\n') {
-                if (line_len == 0) continue;
-                line[line_len] = 0;
+            // LED: flash once every 2 seconds (1s on, 1s off) while searching
+            if ((esp_timer_get_time() - last_led_toggle_us) >= 1000000LL) {
+                led_state = !led_state;
+                gpio_set_level(LED_GPIO, led_state ? LED_ON : LED_OFF);
+                last_led_toggle_us = esp_timer_get_time();
+            }
 
-                char work[128];
-                strncpy(work, line, sizeof(work)-1);
-                work[sizeof(work)-1] = 0;
+            int len = uart_read_bytes(GPS_UART, buf, 512, pdMS_TO_TICKS(250));
+            if (len <= 0) continue;
 
-                if (nmea_parse_gga(work, &fix)) {
-                    if (fix.has_fix) {
-                        s_last_fix       = fix;
-                        s_last_fix_valid = true;
+            for (int i = 0; i < len; i++) {
+                uint8_t c = buf[i];
+                if (c == '\r') continue;
+                if (c == '\n') {
+                    if (line_len == 0) continue;
+                    line[line_len] = 0;
+
+                    char work[128];
+                    strncpy(work, line, sizeof(work) - 1);
+                    work[sizeof(work) - 1] = 0;
+
+                    if (nmea_parse_gga(work, &fix) && fix.has_fix) {
+                        s_last_fix         = fix;
+                        s_last_fix_valid   = true;
                         s_last_fix_time_us = esp_timer_get_time();
+                        got_fix            = true;
 
-                        if ((s_last_fix_time_us - s_last_fix_nvs_save_us) > 30000000) {
-                            if (gps_nvs_save_last_fix(&fix) == ESP_OK)
-                                s_last_fix_nvs_save_us = s_last_fix_time_us;
-                        }
+                        gps_nvs_save_last_fix(&fix);
+                        s_last_fix_nvs_save_us = s_last_fix_time_us;
 
-                        EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
-                        if (bits & WIFI_CONNECTED_BIT) {
-                            ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s | http://%s/",
-                                     fix.lat_deg, fix.lon_deg, fix.sats_used,
-                                     gps_fixq_to_str(fix.fix_quality), wifi_get_ip_str());
-                        } else {
-                            ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
-                                     fix.lat_deg, fix.lon_deg, fix.sats_used,
-                                     gps_fixq_to_str(fix.fix_quality));
-                        }
-                    } else {
-                        if (s_last_fix_valid) {
-                            int64_t age_s = (esp_timer_get_time() - s_last_fix_time_us)/1000000;
-                            ESP_LOGI(TAG, "NO FIX: sats=%d fixq=%s | last fix age=%llds",
-                                     fix.sats_used, gps_fixq_to_str(fix.fix_quality),
-                                     (long long)age_s);
-                        } else {
-                            ESP_LOGI(TAG, "NO FIX: sats=%d fixq=%s",
-                                     fix.sats_used, gps_fixq_to_str(fix.fix_quality));
-                        }
+                        ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
+                                 fix.lat_deg, fix.lon_deg, fix.sats_used,
+                                 gps_fixq_to_str(fix.fix_quality));
                     }
-                }
 
-                strncpy(work, line, sizeof(work)-1);
-                work[sizeof(work)-1] = 0;
-                int64_t gps_epoch = 0;
-                if (nmea_parse_rmc(work, &gps_epoch)) {
-                    bool first_fix = !s_gps_epoch_valid;
-                    s_gps_epoch_s = gps_epoch;
-                    s_gps_epoch_valid = true;
-                    time_update_from_gps(gps_epoch);
-                    if (first_fix) ESP_LOGI(TAG, "GPS time acquired: epoch=%lld", (long long)gps_epoch);
-                }
+                    // Also try to extract time from RMC
+                    strncpy(work, line, sizeof(work) - 1);
+                    work[sizeof(work) - 1] = 0;
+                    int64_t gps_epoch = 0;
+                    if (nmea_parse_rmc(work, &gps_epoch)) {
+                        bool first = !s_gps_epoch_valid;
+                        s_gps_epoch_s     = gps_epoch;
+                        s_gps_epoch_valid = true;
+                        time_update_from_gps(gps_epoch);
+                        if (first) ESP_LOGI(TAG, "GPS time acquired: epoch=%lld",
+                                            (long long)gps_epoch);
+                    }
 
-                line_len = 0;
-                continue;
+                    line_len = 0;
+                    continue;
+                }
+                if (line_len < sizeof(line) - 1) line[line_len++] = (char)c;
+                else line_len = 0;
             }
-            if (line_len < sizeof(line)-1) line[line_len++] = (char)c;
-            else line_len = 0;
-        }
-    }
-}
-
-// ────────── GPS Sampling Task ──────────
-static void gps_sample_task(void *arg)
-{
-    (void)arg;
-    int64_t last_sample_us = esp_timer_get_time();
-
-    while (1) {
-        uint32_t interval_s = s_cfg.location_interval_s > 0 ? s_cfg.location_interval_s : 60;
-        int64_t now_us = esp_timer_get_time();
-
-        if (s_last_fix_valid && (now_us - last_sample_us) >= (int64_t)interval_s * 1000000) {
-            queue_push_sample(); // just call it
-            ESP_LOGI(TAG, "Location sample queued at %lld us", (long long)now_us);
-            last_sample_us = now_us;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(500)); // check twice per second
+        // LED off after search phase
+        gpio_set_level(LED_GPIO, LED_OFF);
+
+        // ── Phase 3: LED feedback ────────────────────────────────────────────
+        if (got_fix) {
+            ESP_LOGI(TAG, "Queuing fresh GPS fix");
+            // 3 rapid blinks = fix found
+            for (int b = 0; b < 3; b++) {
+                gpio_set_level(LED_GPIO, LED_ON);
+                vTaskDelay(pdMS_TO_TICKS(100));
+                gpio_set_level(LED_GPIO, LED_OFF);
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+        } else {
+            if (s_last_fix_valid) {
+                ESP_LOGW(TAG, "No fix — queuing last known location");
+            } else {
+                ESP_LOGW(TAG, "No fix and no last known — queuing empty sample");
+            }
+            // 1 long blink = no fix
+            gpio_set_level(LED_GPIO, LED_ON);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            gpio_set_level(LED_GPIO, LED_OFF);
+        }
+
+        // ── Phase 4: Queue and immediately try to send ───────────────────────
+        queue_push_sample();
+        for (int i = 0; i < 3 && queue_count_unsent() > 0; i++) {
+            gpio_set_level(LED_GPIO, LED_ON);
+            queue_drain_step();
+            gpio_set_level(LED_GPIO, LED_OFF);
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+
+        // ── Phase 5: Put GPS to sleep ────────────────────────────────────────
+        gps_enter_backup();
+        vTaskDelay(pdMS_TO_TICKS(100));  // let the command flush
+
+        // ── Phase 6: Sleep until next cycle ──────────────────────────────────
+        uint32_t interval_s = s_cfg.location_interval_s > 0
+                              ? s_cfg.location_interval_s : 60;
+        ESP_LOGI(TAG, "GPS sleeping for %lus", (unsigned long)interval_s);
+        vTaskDelay(pdMS_TO_TICKS(interval_s * 1000));
     }
 }
 
 // ────────── Public Init ──────────
 void gps_init(void)
 {
-    xTaskCreate(gps_uart_task,   "gps_uart_task",   4096, NULL, 5, NULL);
-    xTaskCreate(gps_sample_task, "gps_sample_task", 4096, NULL, 5, NULL);
+    xTaskCreate(gps_duty_cycle_task, "gps_duty_cycle", 5120, NULL, 5, NULL);
 }

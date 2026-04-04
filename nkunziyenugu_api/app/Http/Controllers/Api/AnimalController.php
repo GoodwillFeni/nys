@@ -105,6 +105,21 @@ class AnimalController extends Controller
             'data' => $types
         ]);
     }
+    public function storeType(Request $request) // Create a new animal type
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:farm_animal_types,name',
+            'description' => 'nullable|string',
+        ]);
+
+        $type = FarmAnimalType::create([
+            'name' => $request->name,
+            'description' => $request->description,
+        ]);
+
+        return response()->json($type, 201);
+    }
+
     public function show(Request $request, FarmAnimal $animal) // Fetch a single animal
     {
         // Determine account ID (same logic as index)
@@ -140,6 +155,27 @@ class AnimalController extends Controller
         return response()->json($breeds);
 
         AuditLogService::logCreate($animal, $request, "Created animal: {$animal->animal_name}");
+    }
+
+    public function storeBreed(Request $request) // Create a new animal breed
+    {
+        $request->validate([
+            'animal_type_id' => 'required|integer|exists:farm_animal_types,id',
+            'breed_name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+        ]);
+
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID');
+
+        $breed = AnimalBreed::create([
+            'account_id' => $accountId,
+            'animal_type_id' => $request->animal_type_id,
+            'breed_name' => $request->breed_name,
+            'description' => $request->description,
+        ]);
+
+        return response()->json($breed, 201);
     }
 
 public function update(Request $request, FarmAnimal $animal) // Update an animal

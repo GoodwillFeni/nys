@@ -21,6 +21,7 @@
           Shop
         </button>
         <div v-show="shopOpen" class="nav-group__items">
+          <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/Shop/Dashboard"><i class="bi bi-speedometer2"></i>Dashboard</RouterLink>
           <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/Shop/Products" ><i class="bi bi-boxes"></i>Products</RouterLink>
           <!-- <RouterLink v-if="isAuthenticated" to="/Shop/Cart">Cart</RouterLink> -->
           <RouterLink v-if="isAuthenticated" to="/Shop/MyOrders"><i class="bi bi-cart"></i>My Orders</RouterLink>

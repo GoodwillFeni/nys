@@ -26,7 +26,7 @@
 
           <div class="row">
             <div class="input-group col">
-              <input type="number" v-model.number="form.animal_type_name" min="1" max="100000" placeholder="Name of the animal type" required />
+              <input type="text" v-model="form.animal_type_name" min="1" max="100000" placeholder="Name of the animal type" required />
             </div>
           </div>
 
@@ -119,19 +119,17 @@ export default {
     async submit() {
       try {
         this.loading = true;
-        // Ensure account_id is set from localStorage if not already selected
-        const accountId = this.form.account_id || localStorage.getItem('account_id');
-        
-        await api.post('farm/animals', {
-          ...this.form,
-          account_id: accountId,
+
+        await api.post('farm/animals/types', {
+          name: this.form.animal_type_name,
+          description: this.form.description,
         });
 
-        toast.success('Animal added successfully!');
-        this.$router.push('/Farm/AnimalList');
+        toast.success('Animal type added successfully!');
+        this.$router.back();
       } catch (error) {
         console.log(error.response?.data?.message)
-        toast.error(error.response?.data?.message || 'Failed to add animal');
+        toast.error(error.response?.data?.message || 'Failed to add animal type');
       } finally {
         this.loading = false;
       }

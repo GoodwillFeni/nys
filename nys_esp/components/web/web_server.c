@@ -14,6 +14,7 @@
 
 #include "nys_common.h"
 #include "comms.h"
+#include "gps.h"
 
 extern nys_cfg_t         s_cfg;
 extern SemaphoreHandle_t s_queue_mutex;
@@ -94,22 +95,39 @@ static esp_err_t http_root_get(httpd_req_t *req)
                 sizeof(net_list) - strlen(net_list) - 1);
     }
 
-    char *html = malloc(4096);
+    // Gather GPS and queue info
+    gps_fix_t fix = {0};
+    bool has_fix = gps_get_last_fix(&fix);
+    uint32_t unsent = queue_count_unsent();
+    int64_t uptime = time_uptime_s();
+
+    char *html = malloc(6144);
     if (!html) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No mem");
         return ESP_FAIL;
     }
 
-    snprintf(html, 4096,
+    snprintf(html, 6144,
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>NYS Setup</title>"
         "<style>body{font-family:Arial;padding:16px;max-width:480px}"
         "input{width:100%%;padding:8px;margin-bottom:12px}"
-        "button{padding:10px 14px}</style>"
+        "button{padding:10px 14px}"
+        ".status{background:#f0f0f0;padding:12px;border-radius:8px;margin-bottom:16px}"
+        ".ok{color:#2a2}.warn{color:#c50}</style>"
         "</head><body>"
 
         "<h2>NYS Device Setup</h2>"
+
+        "<div class='status'>"
+        "<h3>Device Status</h3>"
+        "<p><b>UID:</b> %s</p>"
+        "<p><b>Uptime:</b> %lldh %lldm %llds</p>"
+        "<p><b>GPS:</b> %s</p>"
+        "<p><b>Last Fix:</b> %.6f, %.6f (sats=%d, quality=%d)</p>"
+        "<p><b>Queue:</b> <span class='%s'>%u unsent</span></p>"
+        "</div>"
 
         "<h3>Device Settings</h3>"
         "<form method='POST' action='/save'>"
@@ -131,6 +149,18 @@ static esp_err_t http_root_get(httpd_req_t *req)
 
         "</body></html>",
 
+        s_cfg.device_uid,
+        (long long)(uptime / 3600),
+        (long long)((uptime % 3600) / 60),
+        (long long)(uptime % 60),
+        has_fix ? "<span class='ok'>Fix valid</span>"
+                : "<span class='warn'>No fix</span>",
+        has_fix ? fix.lat_deg : 0.0,
+        has_fix ? fix.lon_deg : 0.0,
+        has_fix ? fix.sats_used : 0,
+        has_fix ? fix.fix_quality : 0,
+        unsent > 0 ? "warn" : "ok",
+        (unsigned)unsent,
         s_cfg.api_url,
         (unsigned)s_cfg.heartbeat_interval_s,
         (unsigned)s_cfg.location_interval_s,

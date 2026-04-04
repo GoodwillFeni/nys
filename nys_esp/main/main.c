@@ -50,12 +50,25 @@ void app_main(void)
     if (!s_cfg.has_wifi) {
         ESP_LOGW(TAG, "No WiFi configured – starting setup portal");
         wifi_auto_connect_on_boot();  // Will start AP if no networks saved
-        web_start_server();
     } else {
         ESP_LOGI(TAG, "Connecting to configured WiFi");
         wifi_connect_to_network(s_cfg.ssid, s_cfg.password);
-        sender_start_task();  // start comms task
     }
+
+    // Always start sender and web server regardless of WiFi config method
+    sender_start_task();
+    web_start_server();
+
+    // ── LED init ──────────────────────────────────────────────────────────────
+    gpio_config_t led_conf = {
+        .pin_bit_mask  = 1ULL << LED_GPIO,
+        .mode          = GPIO_MODE_OUTPUT,
+        .pull_up_en    = GPIO_PULLUP_DISABLE,
+        .pull_down_en  = GPIO_PULLDOWN_DISABLE,
+        .intr_type     = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&led_conf));
+    gpio_set_level(LED_GPIO, LED_OFF);
 
     // ── GPS UART hardware init ────────────────────────────────────────────────
     uart_config_t uart_config = {

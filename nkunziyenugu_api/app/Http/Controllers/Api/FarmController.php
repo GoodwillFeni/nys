@@ -5,7 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Farm;
+use App\Models\FarmAnimal;
+use App\Models\FarmAnimalEvent;
+use App\Models\InventoryItem;
 use App\Services\AuditLogService;
+use Illuminate\Support\Facades\DB;
 
 class FarmController extends Controller
 {
@@ -96,6 +100,89 @@ class FarmController extends Controller
         AuditLogService::logDelete($farm, $request, "Deleted farm: {$farm->name}");
         
         return response()->json(['message' => 'Farm deleted']);
+    }
+
+    // Dashboard summary
+    public function dashboard(Request $request)
+    {
+        $accountId = $request->header('X-Account-ID');
+
+        // Total farms
+        $totalFarms = Farm::where('account_id', $accountId)->where('deleted', '!=', 1)->count();
+
+        // Animals by status
+        $animalsByStatus = FarmAnimal::where('account_id', $accountId)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        $totalAnimals = $animalsByStatus->sum();
+
+        // Animals by type
+        $animalsByType = FarmAnimal::withoutGlobalScopes()
+            ->where('farm_animals.account_id', $accountId)
+            ->where('farm_animals.deleted', '!=', 1)
+            ->join('farm_animal_types', 'farm_animals.animal_type_id', '=', 'farm_animal_types.id')
+            ->selectRaw('farm_animal_types.name as type_name, COUNT(*) as count')
+            ->groupBy('farm_animal_types.name')
+            ->pluck('count', 'type_name');
+
+        // Animals per farm
+        $animalsPerFarm = FarmAnimal::withoutGlobalScopes()
+            ->where('farm_animals.account_id', $accountId)
+            ->where('farm_animals.deleted', '!=', 1)
+            ->join('farm_farms', 'farm_animals.farm_id', '=', 'farm_farms.id')
+            ->selectRaw('farm_farms.name as farm_name, COUNT(*) as count')
+            ->groupBy('farm_farms.name')
+            ->pluck('count', 'farm_name');
+
+        // Low stock items
+        $inventoryItems = InventoryItem::where('account_id', $accountId)->where('deleted', 0)->get();
+        $lowStockCount = $inventoryItems->filter(fn($item) => $item->low_stock)->count();
+
+        // P&L for current month
+        $from = now()->startOfMonth()->toDateString();
+        $to = now()->toDateString();
+
+        $eventPnl = FarmAnimalEvent::where('account_id', $accountId)
+            ->where('deleted', 0)
+            ->whereBetween('event_date', [$from, $to])
+            ->selectRaw("
+                SUM(CASE WHEN cost_type IN ('income','birth') THEN cost ELSE 0 END) as income,
+                SUM(CASE WHEN cost_type IN ('expense','running') THEN cost ELSE 0 END) as expense,
+                SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss
+            ")
+            ->first();
+
+        $monthIncome = round($eventPnl->income ?? 0, 2);
+        $monthExpense = round($eventPnl->expense ?? 0, 2);
+        $monthLoss = round($eventPnl->loss ?? 0, 2);
+        $monthProfit = round($monthIncome - $monthExpense - $monthLoss, 2);
+
+        // Recent events (last 10)
+        $recentEvents = FarmAnimalEvent::with(['animal:id,animal_tag,animal_name', 'farm:id,name'])
+            ->where('account_id', $accountId)
+            ->where('deleted', 0)
+            ->latest('event_date')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'total_farms' => $totalFarms,
+            'total_animals' => $totalAnimals,
+            'animals_by_status' => $animalsByStatus,
+            'animals_by_type' => $animalsByType,
+            'animals_per_farm' => $animalsPerFarm,
+            'low_stock_count' => $lowStockCount,
+            'pnl' => [
+                'income' => $monthIncome,
+                'expense' => $monthExpense,
+                'loss' => $monthLoss,
+                'profit' => $monthProfit,
+                'period' => "$from to $to",
+            ],
+            'recent_events' => $recentEvents,
+        ]);
     }
 
     // Authorization check
