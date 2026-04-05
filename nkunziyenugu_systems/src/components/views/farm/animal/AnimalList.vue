@@ -96,6 +96,10 @@
               <i class="bi bi-link-45deg"></i>
             </button>
             
+            <button class="button-success" v-if="animal.status === 'Active'" @click="openSell(animal)">
+              <i class="bi bi-cash-coin"></i>
+            </button>
+
             <button class="button-danger" @click="deleteAnimal(animal)">
               <i class="bi bi-trash"></i>
             </button>
@@ -103,6 +107,31 @@
         </tr>
       </tbody>
     </table>
+
+    <!-- Sell Modal -->
+    <div class="modal-overlay" v-if="showSellModal" @click.self="showSellModal = false">
+      <div class="modal-box">
+        <h3>Sell Animal</h3>
+        <p class="sell-info">Tag: <b>{{ sellForm.animal_tag }}</b> | {{ sellForm.animal_name || '' }}</p>
+        <form @submit.prevent="submitSell">
+          <div class="input-group">
+            <input type="number" v-model.number="sellForm.sale_price" placeholder="Sale price (R)" required min="0" step="0.01" />
+          </div>
+          <div class="input-group">
+            <input type="date" v-model="sellForm.sale_date" required />
+          </div>
+          <div class="input-group">
+            <textarea v-model="sellForm.notes" placeholder="Notes (optional)"></textarea>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="button-info" :disabled="selling">
+              {{ selling ? 'Selling...' : 'Confirm Sale' }}
+            </button>
+            <button type="button" class="button-warning" @click="showSellModal = false">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -117,6 +146,16 @@ export default {
       filters: {
         search: "",
         status: ""
+      },
+      showSellModal: false,
+      selling: false,
+      sellForm: {
+        animal_id: null,
+        animal_tag: '',
+        animal_name: '',
+        sale_price: null,
+        sale_date: new Date().toISOString().slice(0, 10),
+        notes: '',
       }
     }
   },
@@ -161,6 +200,36 @@ export default {
         this.loadAnimals();
       } catch (error) {
         console.log(error.response?.data?.message)
+      }
+    },
+
+    openSell(animal) {
+      this.sellForm = {
+        animal_id: animal.id,
+        animal_tag: animal.animal_tag,
+        animal_name: animal.animal_name || '',
+        sale_price: null,
+        sale_date: new Date().toISOString().slice(0, 10),
+        notes: '',
+      };
+      this.showSellModal = true;
+    },
+
+    async submitSell() {
+      try {
+        this.selling = true;
+        const res = await api.post(`farm/animals/${this.sellForm.animal_id}/sell`, {
+          sale_price: this.sellForm.sale_price,
+          sale_date: this.sellForm.sale_date,
+          notes: this.sellForm.notes,
+        });
+        toast.success(res.data.message);
+        this.showSellModal = false;
+        this.loadAnimals();
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Failed to sell animal');
+      } finally {
+        this.selling = false;
       }
     },
 
@@ -225,5 +294,50 @@ export default {
 .cursor-pointer:active {
   cursor: pointer;
   color: #6a5cff;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 30px;
+  width: 450px;
+  max-width: 95%;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+}
+
+.modal-box h3 { margin-bottom: 10px; color: #6a5cff; text-align: center; }
+.sell-info { text-align: center; color: #666; margin-bottom: 16px; font-size: 14px; }
+.modal-box .input-group { margin-bottom: 12px; }
+
+.modal-box input,
+.modal-box textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: 1px solid #ddd;
+  outline: none;
+  font-size: 14px;
+  color: #444;
+}
+
+.modal-box input:focus { border-color: #6a5cff; }
+
+.button-success {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
 }
 </style>

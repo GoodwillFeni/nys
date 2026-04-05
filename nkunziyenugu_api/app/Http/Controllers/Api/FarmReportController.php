@@ -30,7 +30,8 @@ class FarmReportController extends Controller
             SUM(CASE WHEN cost_type = 'expense' THEN cost ELSE 0 END) as expense,
             SUM(CASE WHEN cost_type = 'running' THEN cost ELSE 0 END) as running,
             SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss,
-            SUM(CASE WHEN cost_type = 'birth' THEN cost ELSE 0 END) as birth
+            SUM(CASE WHEN cost_type = 'birth' THEN cost ELSE 0 END) as birth,
+            SUM(CASE WHEN cost_type = 'investment' THEN cost ELSE 0 END) as investment
         ")->first();
 
         // Breakdown by event type
@@ -58,19 +59,27 @@ class FarmReportController extends Controller
             ->groupBy('category', 'type')
             ->get();
 
-        // ── Combined totals ──────────────────────────────────────────────────
-        $totalIncome = ($eventSummary->income ?? 0) + ($eventSummary->birth ?? 0) + ($txSummary->income ?? 0);
-        $totalExpense = ($eventSummary->expense ?? 0) + ($eventSummary->running ?? 0) + ($txSummary->expense ?? 0);
-        $totalLoss = ($eventSummary->loss ?? 0) + ($txSummary->loss ?? 0);
-        $profit = $totalIncome - $totalExpense - $totalLoss;
+        // ── Operating totals (excludes investment) ───────────────────────────
+        $opIncome = ($eventSummary->income ?? 0) + ($eventSummary->birth ?? 0) + ($txSummary->income ?? 0);
+        $opExpense = ($eventSummary->expense ?? 0) + ($eventSummary->running ?? 0) + ($txSummary->expense ?? 0);
+        $opLoss = ($eventSummary->loss ?? 0) + ($txSummary->loss ?? 0);
+        $opProfit = $opIncome - $opExpense - $opLoss;
+
+        // ── Capital (investment) ─────────────────────────────────────────────
+        $totalInvestment = $eventSummary->investment ?? 0;
+        $totalBirth = $eventSummary->birth ?? 0;
 
         return response()->json([
             'period' => ['from' => $from, 'to' => $to],
-            'totals' => [
-                'income' => round($totalIncome, 2),
-                'expense' => round($totalExpense, 2),
-                'loss' => round($totalLoss, 2),
-                'profit' => round($profit, 2),
+            'operating' => [
+                'income' => round($opIncome, 2),
+                'expense' => round($opExpense, 2),
+                'loss' => round($opLoss, 2),
+                'profit' => round($opProfit, 2),
+            ],
+            'capital' => [
+                'investment' => round($totalInvestment, 2),
+                'birth_value' => round($totalBirth, 2),
             ],
             'animal_events' => [
                 'income' => round($eventSummary->income ?? 0, 2),
@@ -78,6 +87,7 @@ class FarmReportController extends Controller
                 'running' => round($eventSummary->running ?? 0, 2),
                 'loss' => round($eventSummary->loss ?? 0, 2),
                 'birth' => round($eventSummary->birth ?? 0, 2),
+                'investment' => round($eventSummary->investment ?? 0, 2),
                 'breakdown' => $eventBreakdown,
             ],
             'inventory' => [

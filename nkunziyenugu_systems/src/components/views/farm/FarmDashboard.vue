@@ -97,16 +97,16 @@
             <span class="green">R{{ fmt(data.pnl.income) }}</span>
           </div>
           <div class="pnl-item">
-            <span class="pnl-label">Expense</span>
+            <span class="pnl-label">Op. Expense</span>
             <span class="red">R{{ fmt(data.pnl.expense) }}</span>
           </div>
           <div class="pnl-item">
-            <span class="pnl-label">Loss</span>
-            <span class="red">R{{ fmt(data.pnl.loss) }}</span>
+            <span class="pnl-label">Op. Profit</span>
+            <span :class="data.pnl.profit >= 0 ? 'green' : 'red'">R{{ fmt(data.pnl.profit) }}</span>
           </div>
           <div class="pnl-item">
-            <span class="pnl-label">Profit</span>
-            <span :class="data.pnl.profit >= 0 ? 'green' : 'red'">R{{ fmt(data.pnl.profit) }}</span>
+            <span class="pnl-label">Investment</span>
+            <span class="purple">R{{ fmt(data.pnl.investment) }}</span>
           </div>
         </div>
         <p class="pnl-period" v-if="data.pnl">{{ data.pnl.period }}</p>
@@ -236,6 +236,7 @@ export default {
 .blue { color: #42a5f5; }
 .orange { color: #ffa726; }
 .red { color: #ef5350; }
+.purple { color: #ce93d8; }
 
 .warning-card { border-left: 3px solid #ffa726; }
 .profit-card .icon { color: #66bb6a; }

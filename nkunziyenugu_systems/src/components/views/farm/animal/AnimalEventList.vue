@@ -31,6 +31,7 @@
             <option value="income">Income</option>
             <option value="loss">Loss</option>
             <option value="birth">Birth</option>
+            <option value="investment">Investment</option>
           </select>
 
           <button type="button" class="button-info" @click="$router.push({ name: 'AddAnimalEvent', params: filters.animal_id ? { id: filters.animal_id } : {} })">
@@ -62,6 +63,10 @@
       <div class="summary-card loss">
         <span class="label">Loss</span>
         <span class="value">R{{ formatCost(summary.loss) }}</span>
+      </div>
+      <div class="summary-card investment">
+        <span class="label">Investment</span>
+        <span class="value">R{{ formatCost(summary.investment) }}</span>
       </div>
       <div class="summary-card total">
         <span class="label">Events</span>
@@ -134,6 +139,7 @@
               <option value="income">Income</option>
               <option value="loss">Loss</option>
               <option value="birth">Birth</option>
+              <option value="investment">Investment</option>
             </select>
           </div>
           <div class="input-group">
@@ -339,6 +345,7 @@ export default {
 .summary-card.expense .value { color: #c62828; }
 .summary-card.running .value { color: #e65100; }
 .summary-card.loss .value { color: #b71c1c; }
+.summary-card.investment .value { color: #6a1b9a; }
 .summary-card.total .value { color: #333; }
 
 .badge {
@@ -353,6 +360,7 @@ export default {
 .badge-expense { background: #c62828; }
 .badge-running { background: #e65100; }
 .badge-loss { background: #b71c1c; }
+.badge-investment { background: #6a1b9a; }
 
 .text-center { text-align: center; }
 

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Farm;
 use App\Models\FarmAnimal;
 use App\Models\FarmAnimalEvent;
+use App\Models\FarmTransaction;
 use App\Models\InventoryItem;
 use App\Services\AuditLogService;
 use Illuminate\Support\Facades\DB;
@@ -150,13 +151,26 @@ class FarmController extends Controller
             ->selectRaw("
                 SUM(CASE WHEN cost_type IN ('income','birth') THEN cost ELSE 0 END) as income,
                 SUM(CASE WHEN cost_type IN ('expense','running') THEN cost ELSE 0 END) as expense,
-                SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss
+                SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss,
+                SUM(CASE WHEN cost_type = 'investment' THEN cost ELSE 0 END) as investment
             ")
             ->first();
 
-        $monthIncome = round($eventPnl->income ?? 0, 2);
-        $monthExpense = round($eventPnl->expense ?? 0, 2);
-        $monthLoss = round($eventPnl->loss ?? 0, 2);
+        // Inventory transactions for current month
+        $txPnl = FarmTransaction::where('account_id', $accountId)
+            ->where('deleted', 0)
+            ->whereBetween('transaction_date', [$from, $to])
+            ->selectRaw("
+                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+                SUM(CASE WHEN type = 'loss' THEN amount ELSE 0 END) as loss
+            ")
+            ->first();
+
+        $monthIncome = round(($eventPnl->income ?? 0) + ($txPnl->income ?? 0), 2);
+        $monthExpense = round(($eventPnl->expense ?? 0) + ($txPnl->expense ?? 0), 2);
+        $monthLoss = round(($eventPnl->loss ?? 0) + ($txPnl->loss ?? 0), 2);
+        $monthInvestment = round($eventPnl->investment ?? 0, 2);
         $monthProfit = round($monthIncome - $monthExpense - $monthLoss, 2);
 
         // Recent events (last 10)
@@ -176,6 +190,7 @@ class FarmController extends Controller
             'low_stock_count' => $lowStockCount,
             'pnl' => [
                 'income' => $monthIncome,
+                'investment' => $monthInvestment,
                 'expense' => $monthExpense,
                 'loss' => $monthLoss,
                 'profit' => $monthProfit,

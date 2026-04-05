@@ -8,6 +8,7 @@ use App\Models\ShopPosSale;
 use App\Models\ShopPosSaleItem;
 use App\Models\ShopProduct;
 use App\Models\ShopCustomer;
+use App\Models\ShopCashflow;
 use App\Services\AuditLogService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;

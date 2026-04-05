@@ -60,6 +60,7 @@
                 <option value="income">Income</option>
                 <option value="loss">Loss</option>
                 <option value="birth">Birth</option>
+                <option value="investment">Investment (Buy Animal)</option>
               </select>
             </div>
           </div>

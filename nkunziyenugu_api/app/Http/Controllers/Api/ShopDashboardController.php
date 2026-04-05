@@ -58,8 +58,8 @@ class ShopDashboardController extends ShopBaseController
             ->whereDate('date', '>=', $monthStart)
             ->whereDate('date', '<=', $today);
 
-        $cashIn = (clone $cashflowQuery)->where('transaction_type', 'income')->sum('amount');
-        $cashOut = (clone $cashflowQuery)->where('transaction_type', 'expense')->sum('amount');
+        $cashIn = (clone $cashflowQuery)->whereIn('transaction_type', ['Income', 'Cashup'])->sum('amount');
+        $cashOut = (clone $cashflowQuery)->where('transaction_type', 'Expense')->sum('amount');
 
         // Pending credit requests
         $pendingCredits = ShopCreditRequest::where('account_id', $accountId)

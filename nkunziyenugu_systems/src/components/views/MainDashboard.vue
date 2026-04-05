@@ -1,53 +1,138 @@
 <template>
   <div class="dashboard">
-    <!-- TOP LINE CHART -->
-    <div class="card">
-      <h3>Orders & Revenue</h3>
-      <canvas ref="lineChart" style="height: 200px; width: 100%"></canvas>
+
+    <!-- Top summary cards -->
+    <div class="summary-row">
+      <div class="summary-card" v-if="d.has_devices">
+        <i class="bi bi-laptop icon blue"></i>
+        <div>
+          <span class="value">{{ d.devices?.online || 0 }} / {{ d.devices?.total || 0 }}</span>
+          <span class="label">Devices Online</span>
+        </div>
+      </div>
+
+      <div class="summary-card" :class="{ 'warning-card': d.alerts > 0 }">
+        <i class="bi bi-exclamation-triangle icon orange"></i>
+        <div>
+          <span class="value">{{ d.alerts || 0 }}</span>
+          <span class="label">Alerts</span>
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <i class="bi bi-activity icon green"></i>
+        <div>
+          <span class="value">{{ d.activity_today || 0 }}</span>
+          <span class="label">Activity Today</span>
+        </div>
+      </div>
     </div>
 
-    <!-- BOTTOM CHARTS -->
-    <div class="charts-row">
-      <div class="card">
-        <h4>Monthly Sales</h4>
-        <canvas ref="barChart1" style="height: 200px; width: 100%"></canvas>
+    <!-- Conditional sections -->
+    <div class="grid-2">
+
+      <!-- Farm section -->
+      <div class="section-card" v-if="d.has_farm">
+        <div class="section-header">
+          <h5><i class="bi bi-tree"></i> Farm Overview</h5>
+          <button class="button-info btn-sm" @click="$router.push({ name: 'FarmDashboard' })">View</button>
+        </div>
+
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <span class="mini-value">{{ d.farm?.animals || 0 }}</span>
+            <span class="mini-label">Active Animals</span>
+          </div>
+          <div class="mini-stat">
+            <span class="mini-value">{{ d.farm?.events_this_month || 0 }}</span>
+            <span class="mini-label">Events This Month</span>
+          </div>
+        </div>
+
+        <div class="pnl-row">
+          <div class="pnl-item">
+            <span class="pnl-label">Income</span>
+            <span class="green">R{{ fmt(d.farm?.income) }}</span>
+          </div>
+          <div class="pnl-item">
+            <span class="pnl-label">Expense</span>
+            <span class="red">R{{ fmt(d.farm?.expense) }}</span>
+          </div>
+          <div class="pnl-item">
+            <span class="pnl-label">Op. Profit</span>
+            <span :class="(d.farm?.profit || 0) >= 0 ? 'green' : 'red'">R{{ fmt(d.farm?.profit) }}</span>
+          </div>
+          <div class="pnl-item">
+            <span class="pnl-label">Investment</span>
+            <span class="purple">R{{ fmt(d.farm?.investment) }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <h4>Payment Methods</h4>
-        <canvas ref="barChart2" style="height: 200px; width: 100%"></canvas>
+      <!-- Shop section -->
+      <div class="section-card" v-if="d.has_shop">
+        <div class="section-header">
+          <h5><i class="bi bi-cart3"></i> Shop Overview</h5>
+          <button class="button-info btn-sm" @click="$router.push({ name: 'ShopDashboard' })">View</button>
+        </div>
+
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <span class="mini-value">{{ d.shop?.sales_count || 0 }}</span>
+            <span class="mini-label">Sales This Month</span>
+          </div>
+          <div class="mini-stat" :class="{ 'mini-warn': d.shop?.unpaid > 0 }">
+            <span class="mini-value">{{ d.shop?.unpaid || 0 }}</span>
+            <span class="mini-label">Unpaid</span>
+          </div>
+        </div>
+
+        <div class="pnl-row">
+          <div class="pnl-item">
+            <span class="pnl-label">Revenue</span>
+            <span class="blue">R{{ fmt(d.shop?.revenue) }}</span>
+          </div>
+          <div class="pnl-item">
+            <span class="pnl-label">Profit</span>
+            <span :class="(d.shop?.profit || 0) >= 0 ? 'green' : 'red'">R{{ fmt(d.shop?.profit) }}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <h4>Order Status</h4>
-        <canvas ref="pieChart"></canvas>
+    </div>
+
+    <!-- No data message -->
+    <div class="section-card" v-if="!d.has_farm && !d.has_shop && !d.has_devices && loaded">
+      <div class="empty-state">
+        <i class="bi bi-rocket-takeoff empty-icon"></i>
+        <h5>Get Started</h5>
+        <p>Start by adding a farm, products, or registering a device.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button class="button-info" @click="$router.push({ name: 'AddFarm' })">Add Farm</button>
+          <button class="button-info" @click="$router.push({ name: 'AddProduct' })">Add Product</button>
+          <button class="button-info" @click="$router.push({ name: 'AddDevice' })">Add Device</button>
+        </div>
       </div>
     </div>
 
-    <!-- RAW DATA TABLE -->
-    <div class="card">
-      <h3>Recent Orders</h3>
+    <!-- Recent Activity -->
+    <div class="section-card mt-3" v-if="d.recent_activity?.length">
+      <div class="section-header">
+        <h5><i class="bi bi-clock-history"></i> Recent Activity</h5>
+      </div>
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Customer</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Date</th>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="order in orders" :key="order.id">
-            <td>{{ order.id }}</td>
-            <td>{{ order.customer }}</td>
-            <td>R {{ order.amount }}</td>
-            <td>
-              <span :class="['status', order.status.toLowerCase()]">
-                {{ order.status }}
-              </span>
-            </td>
-            <td>{{ order.date }}</td>
+          <tr v-for="a in d.recent_activity" :key="a.id">
+            <td>{{ formatDate(a.created_at) }}</td>
+            <td><span class="badge badge-action">{{ a.action }}</span></td>
+            <td>{{ a.description }}</td>
           </tr>
         </tbody>
       </table>
@@ -57,160 +142,54 @@
 </template>
 
 <script>
-import {
-  Chart,
-  LineController,
-  BarController,
-  PieController,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend
-} from 'chart.js'
-
-Chart.register(
-  LineController,
-  BarController,
-  PieController,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend
-)
-
-/* DYNAMIC COLOR PALETTE */
-const COLORS = [
-  '#FFC107', // yellow
-  '#4CAF50', // light green
-  '#2196F3', // blue
-  '#03A9F4', // light blue
-  '#9C27B0', // purple
-  '#FF5722', // orange
-  '#00BCD4', // cyan
-  '#8BC34A'  // lime
-]
-
-const pickColors = count => COLORS.slice(0, count)
+import api from '@/store/services/api';
+import { useToast } from "vue-toastification";
+const toast = useToast();
 
 export default {
   name: 'MainDashboard',
 
   data() {
     return {
-      orders: [
-        { id: 1, customer: 'John', amount: 1200, status: 'Paid', date: '2025-01-10' },
-        { id: 2, customer: 'Sarah', amount: 900, status: 'Pending', date: '2025-01-11' },
-        { id: 3, customer: 'Mike', amount: 1500, status: 'Paid', date: '2025-01-12' },
-        { id: 4, customer: 'Anna', amount: 700, status: 'Cancelled', date: '2025-01-13' }
-      ]
+      loaded: false,
+      d: {
+        has_farm: false,
+        has_shop: false,
+        has_devices: false,
+        devices: null,
+        alerts: 0,
+        activity_today: 0,
+        farm: null,
+        shop: null,
+        recent_activity: [],
+      }
     }
   },
 
   mounted() {
-    this.drawCharts()
+    this.loadDashboard();
   },
 
   methods: {
-    drawCharts() {
+    async loadDashboard() {
+      try {
+        const res = await api.get('/dashboard');
+        this.d = res.data;
+      } catch (e) {
+        toast.error('Failed to load dashboard');
+      } finally {
+        this.loaded = true;
+      }
+    },
 
-      /* LINE CHART */
-      new Chart(this.$refs.lineChart, {
-        type: 'line',
-        data: {
-          labels: ['Mon','Tue','Wed','Thu','Fri'],
-          datasets: [
-            {
-              label: 'Orders',
-              data: [5, 8, 6, 9, 12],
-              borderColor: COLORS[2],
-              backgroundColor: 'rgba(33,150,243,0.2)',
-              tension: 0.4
-            },
-            {
-              label: 'Revenue',
-              data: [1000, 1600, 1200, 2000, 2600],
-              borderColor: COLORS[1],
-              backgroundColor: 'rgba(76,175,80,0.2)',
-              tension: 0.4
-            }
-          ]
-        },
-        options: {
-          plugins: {
-            legend: {
-              position: 'right'
-            }
-          }
-        }
-      })
+    fmt(val) {
+      return parseFloat(val || 0).toFixed(2);
+    },
 
-      /* BAR CHART 1 */
-      new Chart(this.$refs.barChart1, {
-        type: 'bar',
-        data: {
-          labels: ['Jan','Feb','Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-          datasets: [{
-            label: 'Sales',
-            data: [3000, 4200, 3800, 4500, 5000, 4800, 5200, 5500, 4900, 5100, 4700, 5300],
-            backgroundColor: pickColors(12)
-          }]
-        },
-        options: {
-          plugins: {
-            legend: {
-              position: 'bottom'
-            }
-          }
-        }
-      })
-
-      /* BAR CHART 2 */
-      new Chart(this.$refs.barChart2, {
-        type: 'bar',
-        data: {
-          labels: ['Cash','Card','Online', 'Mobile', 'Other'],
-          datasets: [{
-            label: 'Payments',
-            data: [25, 40, 35, 15, 10],
-            backgroundColor: pickColors(5),
-            borderWidth: 1,
-          }]
-        },
-        options: {
-          plugins: {
-            legend: {
-              position: 'bottom'
-            }
-          }
-        }
-      })
-
-      /* PIE CHART */
-      new Chart(this.$refs.pieChart, {
-        type: 'pie',
-        data: {
-          labels: ['Paid','Pending','Cancelled', 'Refunded'],
-          datasets: [{
-            data: [60, 25, 15, 10],
-            backgroundColor: pickColors(4)
-          }]
-        },
-        options: {
-          plugins: {
-            legend: {
-              position: 'right'
-            }
-          }
-        }
-      })
+    formatDate(d) {
+      if (!d) return '-';
+      const dt = new Date(d);
+      return dt.toLocaleDateString('en-ZA') + ' ' + dt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
     }
   }
 }
@@ -218,65 +197,135 @@ export default {
 
 <style scoped>
 .dashboard {
+  padding: 10px;
+  color: #e0e0e0;
+}
+
+/* Summary row */
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  background: rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.summary-card .icon { font-size: 28px; }
+.summary-card .value { font-size: 22px; font-weight: bold; display: block; color: #fff; }
+.summary-card .label { font-size: 12px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+
+.green { color: #66bb6a; }
+.blue { color: #42a5f5; }
+.orange { color: #ffa726; }
+.red { color: #ef5350; }
+.purple { color: #ce93d8; }
+
+.warning-card { border-left: 3px solid #ffa726; }
+
+/* Grid */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Section card */
+.section-card {
+  background: rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.section-header h5 {
+  margin: 0;
+  color: #fff;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Mini stats */
+.mini-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mini-stat {
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  align-items: center;
+  flex: 1;
 }
 
-/* CARD */
-.card {
-  background: linear-gradient(135deg, #27253f, #605a6d);
-  color: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  height: 300px;
-}
+.mini-value { font-size: 20px; font-weight: bold; color: #fff; }
+.mini-label { font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+.mini-warn .mini-value { color: #ffa726; }
 
-/* CHART GRID */
-.charts-row {
+/* P&L row */
+.pnl-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
 }
 
-/* TABLE */
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th, td {
+.pnl-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
   padding: 10px;
-  border-bottom: 1px solid #eee;
-  text-align: left;
 }
 
+.pnl-label { font-size: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+.pnl-item span:last-child { font-size: 15px; font-weight: bold; }
 
-/* STATUS COLORS */
-.status {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  color: #fff;
+/* Table */
+table { color: #e0e0e0; width: 100%; }
+thead { background: rgba(255,255,255,0.08); }
+th { color: rgba(255,255,255,0.7); padding: 8px; text-align: left; }
+td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+.badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: #fff; }
+.badge-action { background: #546e7a; }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
 }
 
-.status.paid {
-  background: #4CAF50;
-}
+.empty-icon { font-size: 48px; color: rgba(255,255,255,0.3); display: block; margin-bottom: 12px; }
+.empty-state h5 { color: #fff; margin-bottom: 8px; }
+.empty-state p { color: rgba(255,255,255,0.5); margin-bottom: 16px; }
 
-.status.pending {
-  background: #FFC107;
-  color: #000;
-}
-
-.status.cancelled {
-  background: #F44336;
-}
-
-/* RESPONSIVE */
-@media (max-width: 900px) {
-  .charts-row {
-    grid-template-columns: 1fr;
-  }
-}
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.mt-3 { margin-top: 16px; }
+.justify-content-center { justify-content: center; }
 </style>

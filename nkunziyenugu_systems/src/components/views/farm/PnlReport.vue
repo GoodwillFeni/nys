@@ -16,23 +16,35 @@
       </div>
     </div>
 
-    <!-- Summary Cards -->
+    <!-- Operating P&L -->
     <div class="summary-row" v-if="report">
       <div class="summary-card income-card">
-        <span class="label">Total Income</span>
-        <span class="value">R{{ fmt(report.totals.income) }}</span>
+        <span class="label">Operating Income</span>
+        <span class="value">R{{ fmt(report.operating.income) }}</span>
       </div>
       <div class="summary-card expense-card">
-        <span class="label">Total Expense</span>
-        <span class="value">R{{ fmt(report.totals.expense) }}</span>
+        <span class="label">Operating Expense</span>
+        <span class="value">R{{ fmt(report.operating.expense) }}</span>
       </div>
       <div class="summary-card loss-card">
-        <span class="label">Total Loss</span>
-        <span class="value">R{{ fmt(report.totals.loss) }}</span>
+        <span class="label">Loss</span>
+        <span class="value">R{{ fmt(report.operating.loss) }}</span>
       </div>
-      <div class="summary-card" :class="report.totals.profit >= 0 ? 'profit-card' : 'loss-card'">
-        <span class="label">Profit / Loss</span>
-        <span class="value">R{{ fmt(report.totals.profit) }}</span>
+      <div class="summary-card" :class="report.operating.profit >= 0 ? 'profit-card' : 'loss-card'">
+        <span class="label">Operating Profit</span>
+        <span class="value">R{{ fmt(report.operating.profit) }}</span>
+      </div>
+    </div>
+
+    <!-- Capital -->
+    <div class="summary-row" v-if="report">
+      <div class="summary-card investment-card">
+        <span class="label">Capital Investment</span>
+        <span class="value">R{{ fmt(report.capital.investment) }}</span>
+      </div>
+      <div class="summary-card birth-card">
+        <span class="label">Birth Asset Value</span>
+        <span class="value">R{{ fmt(report.capital.birth_value) }}</span>
       </div>
     </div>
 
@@ -44,10 +56,11 @@
         <h5>Animal Events</h5>
         <div class="mini-cards">
           <div class="mini-card"><span>Income</span><span class="green">R{{ fmt(report.animal_events.income) }}</span></div>
-          <div class="mini-card"><span>Birth Value</span><span class="blue">R{{ fmt(report.animal_events.birth) }}</span></div>
+          <div class="mini-card"><span>Birth</span><span class="blue">R{{ fmt(report.animal_events.birth) }}</span></div>
           <div class="mini-card"><span>Expense</span><span class="red">R{{ fmt(report.animal_events.expense) }}</span></div>
           <div class="mini-card"><span>Running</span><span class="orange">R{{ fmt(report.animal_events.running) }}</span></div>
           <div class="mini-card"><span>Loss</span><span class="red">R{{ fmt(report.animal_events.loss) }}</span></div>
+          <div class="mini-card"><span>Investment</span><span class="purple">R{{ fmt(report.animal_events.investment) }}</span></div>
         </div>
 
         <table v-if="report.animal_events.breakdown.length > 0">
@@ -195,6 +208,10 @@ export default {
 .loss-card .value { color: #b71c1c; }
 .profit-card { border-top-color: #1565c0; }
 .profit-card .value { color: #1565c0; }
+.investment-card { border-top-color: #6a1b9a; }
+.investment-card .value { color: #6a1b9a; }
+.birth-card { border-top-color: #1565c0; }
+.birth-card .value { color: #1565c0; }
 
 .breakdown-grid {
   display: grid;
@@ -243,6 +260,7 @@ export default {
 .blue { color: #1565c0; font-weight: bold; }
 .red { color: #c62828; font-weight: bold; }
 .orange { color: #e65100; font-weight: bold; }
+.purple { color: #6a1b9a; font-weight: bold; }
 
 .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: #fff; }
 .badge-income { background: #2e7d32; }
@@ -250,6 +268,7 @@ export default {
 .badge-running { background: #e65100; }
 .badge-loss { background: #b71c1c; }
 .badge-birth { background: #1565c0; }
+.badge-investment { background: #6a1b9a; }
 
 .empty { color: #999; font-style: italic; font-size: 14px; }
 .period-info { color: #999; font-size: 12px; text-align: right; margin-top: 10px; }

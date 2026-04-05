@@ -181,6 +181,7 @@ class AnimalEventController extends Controller
                 SUM(CASE WHEN cost_type = 'running' THEN cost ELSE 0 END) as running,
                 SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss,
                 SUM(CASE WHEN cost_type = 'birth' THEN cost ELSE 0 END) as birth,
+                SUM(CASE WHEN cost_type = 'investment' THEN cost ELSE 0 END) as investment,
                 COUNT(*) as total_events
             ")
             ->first();
@@ -221,7 +222,7 @@ class AnimalEventController extends Controller
             'event_type' => 'sometimes|required',
             'event_date' => 'sometimes|required|date',
             'cost' => 'sometimes|numeric',
-            'cost_type' => 'sometimes|in:income,expense,loss,running,birth',
+            'cost_type' => 'sometimes|in:income,expense,loss,running,birth,investment',
         ]);
 
         $oldValues = $event->getOriginal();

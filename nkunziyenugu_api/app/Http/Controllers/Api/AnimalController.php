@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\FarmAnimal;
 use App\Models\FarmAnimalType;
+use App\Models\FarmAnimalEvent;
 use App\Models\AnimalBreed;
 use App\Services\AuditLogService;
 
@@ -230,6 +231,48 @@ public function update(Request $request, FarmAnimal $animal) // Update an animal
         AuditLogService::logUpdate($animal, $oldValues, $request, "Updated animal: ");
 
         return $animal;
+    }
+
+    public function sell(Request $request, FarmAnimal $animal)
+    {
+        $accountId = $request->account_id
+            ?? $request->header('X-Account-ID')
+            ?? optional($request->user())->account_id;
+
+        if ($accountId && $animal->account_id != $accountId) {
+            abort(403, 'Unauthorized access to this animal');
+        }
+
+        $request->validate([
+            'sale_price' => 'required|numeric|min:0',
+            'sale_date' => 'required|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        // Update animal status to sold
+        $oldValues = $animal->getOriginal();
+        $animal->update(['status' => 'sold']);
+
+        // Create income event
+        $event = FarmAnimalEvent::create([
+            'account_id' => $animal->account_id,
+            'farm_id' => $animal->farm_id,
+            'animal_id' => $animal->id,
+            'event_type' => 'Sold',
+            'event_date' => $request->sale_date,
+            'cost' => $request->sale_price,
+            'cost_type' => 'income',
+            'meta' => json_encode(['notes' => $request->notes ?? "Animal sold for R{$request->sale_price}"]),
+        ]);
+
+        AuditLogService::logUpdate($animal, $oldValues, $request,
+            "Sold animal #{$animal->animal_tag} for R{$request->sale_price}");
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Animal sold for R{$request->sale_price}",
+            'event' => $event,
+        ]);
     }
 
 public function destroy(Request $request, FarmAnimal $animal)

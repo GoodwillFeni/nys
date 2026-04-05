@@ -184,6 +184,8 @@ Chart.register(
   PointElement, LineElement, BarElement, Tooltip, Legend
 );
 
+Chart.defaults.animation = false;
+
 const toast = useToast();
 
 const COLORS = ['#66bb6a', '#42a5f5', '#ffa726', '#ef5350', '#ab47bc', '#26c6da', '#8d6e63', '#78909c'];
@@ -229,8 +231,12 @@ export default {
     },
 
     drawCharts() {
+      // Destroy any existing charts first
+      this.charts.forEach(c => c.destroy());
+      this.charts = [];
+
       // Monthly trend
-      if (this.$refs.trendChart && this.d.monthly_trend?.length) {
+      if (this.$refs.trendChart?.getContext && this.d.monthly_trend?.length) {
         this.charts.push(new Chart(this.$refs.trendChart, {
           type: 'bar',
           data: {
@@ -262,7 +268,7 @@ export default {
       }
 
       // Payment methods
-      if (this.$refs.paymentChart && this.d.sales_by_payment?.length) {
+      if (this.$refs.paymentChart?.getContext && this.d.sales_by_payment?.length) {
         this.charts.push(new Chart(this.$refs.paymentChart, {
           type: 'bar',
           data: {

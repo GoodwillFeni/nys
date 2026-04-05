@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\AnimalDeviceLinkController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\FarmReportController;
 use App\Http\Controllers\Api\ShopDashboardController;
+use App\Http\Controllers\Api\DashboardController;
 
 
 
@@ -44,7 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
             'is_impersonating' => session()->has('impersonator_id')
         ]);
     });
-    Route::get('/dashboard', fn () => ['status' => 'ok']);
+    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     // Accounts
     Route::get('/accounts/available', [AccountsController::class, 'availableAccounts']);
@@ -127,6 +128,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('farm/animals', [AnimalController::class, 'store']);
     Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
     Route::put('farm/animals/{animal}', [AnimalController::class, 'update']);
+    Route::post('farm/animals/{animal}/sell', [AnimalController::class, 'sell']);
     Route::delete('farm/animals/{animal}', [AnimalController::class, 'destroy']);
 
     // Animal Events
