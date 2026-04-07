@@ -73,6 +73,9 @@ esp_err_t cfg_load(nys_cfg_t *out)
     (void)nvs_get_u32(h, "hb_int",  &out->heartbeat_interval_s);
     (void)nvs_get_u32(h, "loc_int", &out->location_interval_s);
 
+    uint8_t ds = 0;
+    if (nvs_get_u8(h, "ds_en", &ds) == ESP_OK) out->deep_sleep_enabled = (ds != 0);
+
     if (out->heartbeat_interval_s == 0) out->heartbeat_interval_s = 60;
     if (out->location_interval_s  == 0) out->location_interval_s  = 60;
     if (out->input1_desc[0] == 0) strncpy(out->input1_desc, "Input 1", sizeof(out->input1_desc) - 1);
@@ -95,7 +98,8 @@ esp_err_t cfg_save_wifi(const char *ssid, const char *password)
 }
 
 esp_err_t cfg_save_settings(uint32_t hb_s, uint32_t loc_s,
-                              const char *in1_desc, const char *api_url)
+                              const char *in1_desc, const char *api_url,
+                              int deep_sleep_enabled)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
@@ -104,6 +108,8 @@ esp_err_t cfg_save_settings(uint32_t hb_s, uint32_t loc_s,
     if (err == ESP_OK) err = nvs_set_u32(h, "loc_int", loc_s);
     if (err == ESP_OK && in1_desc) err = nvs_set_str(h, "in1_desc", in1_desc);
     if (err == ESP_OK && api_url)  err = nvs_set_str(h, "api_url",  api_url);
+    if (err == ESP_OK && deep_sleep_enabled >= 0)
+        err = nvs_set_u8(h, "ds_en", (uint8_t)(deep_sleep_enabled ? 1 : 0));
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;
@@ -686,6 +692,30 @@ void queue_drain_step(void)
         nvs_close(h);
     }
     xSemaphoreGive(s_queue_mutex);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEND ALL PENDING — used by deep sleep flow (HTTP only)
+// ════════════════════════════════════════════════════════════════════════════
+
+void send_all_pending(const nys_cfg_t *cfg)
+{
+    (void)cfg;
+
+    // Push current GPS sample into the queue
+    queue_push_sample();
+
+    // Drain all unsent records via HTTP
+    for (int attempt = 0; attempt < NYS_QUEUE_SIZE; attempt++) {
+        uint32_t unsent = queue_count_unsent();
+        if (unsent == 0) break;
+
+        ESP_LOGI(TAG, "send_all: %u unsent remaining", (unsigned)unsent);
+        queue_drain_step();
+    }
+
+    uint32_t remaining = queue_count_unsent();
+    ESP_LOGI(TAG, "send_all done: %u still unsent", (unsigned)remaining);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

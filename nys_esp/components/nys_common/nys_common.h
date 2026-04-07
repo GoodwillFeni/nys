@@ -36,7 +36,11 @@
 
 #define NYS_AP_WINDOW_MS     60000
 #define INPUT_DEBOUNCE_MS    2000
-#define GPS_FIX_TIMEOUT_S    300     // 5 minutes
+#define GPS_FIX_TIMEOUT_S    300     // 5 minutes — used when NO previous fix
+#define GPS_FIX_TIMEOUT_SHORT_S 60  // 1 minute — used when previous fix exists
+
+// ─── Deep sleep ──────────────────────────────────────────────────────────────
+#define NYS_DEEP_SLEEP_DEFAULT_S  60  // default sleep interval if not configured
 
 // ─── Saved networks ───────────────────────────────────────────────────────────
 #define NYS_MAX_NETWORKS  3
@@ -63,6 +67,17 @@ typedef struct {
     int32_t  sats_used;
 } gps_fix_nvs_v1_t;
 
+// ─── RTC memory — survives deep sleep ────────────────────────────────────────
+typedef struct {
+    float    lat;
+    float    lng;
+    bool     has_fix;
+    uint32_t boot_count;
+    int64_t  last_heartbeat_epoch;  // epoch of last heartbeat sent
+    uint8_t  last_input1_level;     // last known GPIO input state
+    uint8_t  last_input2_level;     // last known GPIO output state
+} nys_rtc_data_t;
+
 // ─── Config type ─────────────────────────────────────────────────────────────
 typedef struct {
     char     ssid[33];           // last connected SSID (index 0 in network list)
@@ -74,6 +89,7 @@ typedef struct {
     uint32_t heartbeat_interval_s;
     uint32_t location_interval_s;
     char     input1_desc[64];
+    bool     deep_sleep_enabled; // NEW: true = deep sleep mode, false = always-on
 } nys_cfg_t;
 
 // ─── Queue record ─────────────────────────────────────────────────────────────

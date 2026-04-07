@@ -2,6 +2,7 @@
 namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use App\Models\DeviceMessage;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -49,6 +50,21 @@ class DeviceMessageController extends Controller
 
         $payload = $request->all();
 
+        // Extract message_id (message_seq from device)
+        $messageId = isset($payload['message_seq']) ? (int) $payload['message_seq'] : null;
+
+        // Check if this message already exists (deduplication)
+        if ($messageId !== null) {
+            $existingMessage = DeviceMessage::where('device_id', $device->id)
+                ->where('message_id', $messageId)
+                ->first();
+            
+            if ($existingMessage) {
+                // Message already stored, return success to indicate idempotency
+                return response()->json(['status' => 'ok', 'duplicate' => true]);
+            }
+        }
+
         $epoch = null;
         if (isset($payload['message_timestamp'])) {
             $epoch = (int) $payload['message_timestamp'];
@@ -72,6 +88,7 @@ class DeviceMessageController extends Controller
             'payload' => $payload,
             'lat' => $payload['gps']['lat'] ?? null,
             'lng' => $payload['gps']['lng'] ?? null,
+            'message_id' => $messageId,
             'message_timestamp' => $messageTimestamp,
         ]);
 

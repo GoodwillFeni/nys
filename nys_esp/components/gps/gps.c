@@ -266,9 +266,6 @@ static esp_err_t gps_send_ubx(uint8_t cls, uint8_t id,
 // Duration=0 means indefinite — wakes on UART activity or EXTINT
 static esp_err_t gps_enter_backup(void)
 {
-    // UBX-RXM-PMREQ v0: 8-byte payload
-    // bytes 0-3: duration (U4, little-endian) — 0 = indefinite
-    // bytes 4-7: flags (X4) — bit 1 = backup mode
     uint8_t payload[8] = {
         0x00, 0x00, 0x00, 0x00,   // duration = 0 (indefinite)
         0x02, 0x00, 0x00, 0x00,   // flags = 0x02 (backup)
@@ -287,12 +284,98 @@ static void gps_wake(void)
     uint8_t wake_bytes[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
     uart_write_bytes(GPS_UART, wake_bytes, sizeof(wake_bytes));
     ESP_LOGI(TAG, "GPS wake signal sent");
-
-    // Flush any stale data in the RX buffer from before sleep
     uart_flush_input(GPS_UART);
-
-    // Give the module time to start up and begin outputting NMEA
     vTaskDelay(pdMS_TO_TICKS(1000));
+}
+
+// ────────── NEW: Public power on/off for deep sleep mode ──────────
+void gps_power_on(void)  { gps_wake(); }
+void gps_power_off(void) { gps_enter_backup(); vTaskDelay(pdMS_TO_TICKS(100)); }
+
+// NEW: Try to obtain GPS fix within timeout_s. Returns true if fix obtained.
+// Reads NMEA in a blocking loop — designed for linear deep sleep flow.
+bool gps_try_get_fix(int timeout_s)
+{
+    uint8_t *buf = malloc(512);
+    if (!buf) { ESP_LOGE(TAG, "No memory for GPS buffer"); return false; }
+
+    bool     got_fix    = false;
+    int64_t  start_us   = esp_timer_get_time();
+    int64_t  timeout_us = (int64_t)timeout_s * 1000000LL;
+    char     line[128];
+    size_t   line_len   = 0;
+    gps_fix_t fix       = {0};
+
+    ESP_LOGI(TAG, "GPS: waiting for fix (timeout %ds)...", timeout_s);
+
+    while (!got_fix) {
+        int64_t elapsed_us = esp_timer_get_time() - start_us;
+        if (elapsed_us >= timeout_us) {
+            ESP_LOGW(TAG, "GPS fix timeout after %ds", timeout_s);
+            break;
+        }
+
+        // LED: slow flash while searching
+        static int64_t last_toggle = 0;
+        static bool led_on = false;
+        if ((esp_timer_get_time() - last_toggle) >= 1000000LL) {
+            led_on = !led_on;
+            gpio_set_level(LED_GPIO, led_on ? LED_ON : LED_OFF);
+            last_toggle = esp_timer_get_time();
+        }
+
+        int len = uart_read_bytes(GPS_UART, buf, 512, pdMS_TO_TICKS(250));
+        if (len <= 0) continue;
+
+        for (int i = 0; i < len; i++) {
+            uint8_t c = buf[i];
+            if (c == '\r') continue;
+            if (c == '\n') {
+                if (line_len == 0) continue;
+                line[line_len] = 0;
+
+                char work[128];
+                strncpy(work, line, sizeof(work) - 1);
+                work[sizeof(work) - 1] = 0;
+
+                if (nmea_parse_gga(work, &fix) && fix.has_fix) {
+                    s_last_fix         = fix;
+                    s_last_fix_valid   = true;
+                    s_last_fix_time_us = esp_timer_get_time();
+                    got_fix            = true;
+
+                    gps_nvs_save_last_fix(&fix);
+                    s_last_fix_nvs_save_us = s_last_fix_time_us;
+
+                    ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
+                             fix.lat_deg, fix.lon_deg, fix.sats_used,
+                             gps_fixq_to_str(fix.fix_quality));
+                }
+
+                // Extract time from RMC
+                strncpy(work, line, sizeof(work) - 1);
+                work[sizeof(work) - 1] = 0;
+                int64_t gps_epoch = 0;
+                if (nmea_parse_rmc(work, &gps_epoch)) {
+                    bool first = !s_gps_epoch_valid;
+                    s_gps_epoch_s     = gps_epoch;
+                    s_gps_epoch_valid = true;
+                    time_update_from_gps(gps_epoch);
+                    if (first) ESP_LOGI(TAG, "GPS time acquired: epoch=%lld",
+                                        (long long)gps_epoch);
+                }
+
+                line_len = 0;
+                continue;
+            }
+            if (line_len < sizeof(line) - 1) line[line_len++] = (char)c;
+            else line_len = 0;
+        }
+    }
+
+    gpio_set_level(LED_GPIO, LED_OFF);
+    free(buf);
+    return got_fix;
 }
 
 // ────────── GPS Duty-Cycle Task ──────────

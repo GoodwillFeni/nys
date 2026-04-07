@@ -12,7 +12,8 @@ esp_err_t cfg_save_wifi(const char *ssid, const char *password);
 esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s,
                              uint32_t location_interval_s,
                              const char *input1_desc,
-                             const char *api_url);
+                             const char *api_url,
+                             int deep_sleep_enabled);
 void      cfg_ensure_identity(nys_cfg_t *cfg);
 
 // ─── Saved networks ───────────────────────────────────────────────────────────
@@ -51,6 +52,10 @@ void     queue_delete_rec_locked(nvs_handle_t h, uint32_t idx);
 // ─── HTTP senders ─────────────────────────────────────────────────────────────
 esp_err_t http_send_heartbeat(const nys_cfg_t *cfg);
 esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level);
+
+// ─── Deep sleep helpers ──────────────────────────────────────────────────────
+// Push current sample and drain all queued records via HTTP.
+void send_all_pending(const nys_cfg_t *cfg);
 
 // ─── Send task ────────────────────────────────────────────────────────────────
 void sender_start_task(void);

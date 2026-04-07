@@ -5,6 +5,7 @@ idf_component_register(
         nvs_flash
         esp_netif
         esp_event
+        esp_hw_support
         driver
         freertos
         nys_common

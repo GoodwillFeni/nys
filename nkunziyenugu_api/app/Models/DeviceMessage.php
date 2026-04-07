@@ -11,6 +11,7 @@ class DeviceMessage extends Model
         'payload',
         'lat',
         'lng',
+        'message_id',
         'message_timestamp',
     ];
 

@@ -476,6 +476,7 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     if (epoch_s > 0) {
         cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
     }
+    cJSON_AddNumberToObject(root, "message_seq", (double)s_queue_next_seq++);
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -515,14 +516,13 @@ static esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
     esp_err_t err = esp_http_client_perform(client);
 
     int status = esp_http_client_get_status_code(client);
-    if (status > 0 && (status < 200 || status >= 300)) {
-        char resp[512];
-        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
-        if (r >= 0) {
-            resp[r] = 0;
-            if (r > 0) {
-                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
-            }
+    
+    char resp[512] = {0};
+    int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
+    if (r >= 0) {
+        resp[r] = 0;
+        if (r > 0 && status >= 300) {
+            ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
         }
     }
 
@@ -562,6 +562,7 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     if (epoch_s > 0) {
         cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
     }
+    cJSON_AddNumberToObject(root, "message_seq", (double)s_queue_next_seq++);
 
     bool include_gps = false;
     gps_fix_t to_send = { 0 };
@@ -626,14 +627,13 @@ static esp_err_t http_send_location(const nys_cfg_t *cfg, const gps_fix_t *fix, 
     esp_err_t err = esp_http_client_perform(client);
 
     int status = esp_http_client_get_status_code(client);
-    if (status > 0 && (status < 200 || status >= 300)) {
-        char resp[512];
-        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
-        if (r >= 0) {
-            resp[r] = 0;
-            if (r > 0) {
-                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
-            }
+    
+    char resp[512] = {0};
+    int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
+    if (r >= 0) {
+        resp[r] = 0;
+        if (r > 0 && status >= 300) {
+            ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
         }
     }
     if (err == ESP_OK) {
@@ -672,6 +672,7 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
     if (epoch_s > 0) {
         cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch_s);
     }
+    cJSON_AddNumberToObject(root, "message_seq", (double)s_queue_next_seq++);
 
     cJSON *inputs = cJSON_AddObjectToObject(root, "inputs");
     if (inputs) {
@@ -719,14 +720,13 @@ static esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
 
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
-    if (status > 0 && (status < 200 || status >= 300)) {
-        char resp[512];
-        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
-        if (r >= 0) {
-            resp[r] = 0;
-            if (r > 0) {
-                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
-            }
+    
+    char resp[512] = {0};
+    int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
+    if (r >= 0) {
+        resp[r] = 0;
+        if (r > 0 && status >= 300) {
+            ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
         }
     }
     if (err == ESP_OK) {
@@ -1971,6 +1971,7 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     if (rec->queued_at_epoch_s > 0) {
         cJSON_AddNumberToObject(root, "message_timestamp", (double)rec->queued_at_epoch_s);
     }
+    cJSON_AddNumberToObject(root, "message_seq", (double)rec->seq);
 
     cJSON *gps = cJSON_AddObjectToObject(root, "gps");
     if (gps) {
@@ -2024,14 +2025,12 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
 
-    if (status > 0 && (status < 200 || status >= 300)) {
-        char resp[512];
-        int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
-        if (r >= 0) {
-            resp[r] = 0;
-            if (r > 0) {
-                ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
-            }
+    char resp[512] = {0};
+    int r = esp_http_client_read_response(client, resp, (int)(sizeof(resp) - 1));
+    if (r >= 0) {
+        resp[r] = 0;
+        if (r > 0 && status >= 300) {
+            ESP_LOGW(TAG, "HTTP response body (%d bytes): %s", r, resp);
         }
     }
 

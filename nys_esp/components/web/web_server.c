@@ -24,7 +24,8 @@ extern uint32_t          s_queue_widx;
 extern bool     queue_load_rec_locked(nvs_handle_t h, uint32_t idx, nys_queue_rec_t *out);
 extern void     queue_delete_rec_locked(nvs_handle_t h, uint32_t idx);
 extern esp_err_t cfg_save_settings(uint32_t hb, uint32_t loc,
-                                    const char *in1_desc, const char *api_url);
+                                    const char *in1_desc, const char *api_url,
+                                    int deep_sleep_enabled);
 
 static const char *TAG = "WEB";
 static httpd_handle_t s_httpd = NULL;
@@ -131,10 +132,11 @@ static esp_err_t http_root_get(httpd_req_t *req)
 
         "<h3>Device Settings</h3>"
         "<form method='POST' action='/save'>"
-        "<input name='api' value='%s'/>"
-        "<input name='hb' value='%u'/>"
-        "<input name='loc' value='%u'/>"
-        "<input name='in1' value='%s'/>"
+        "<label>API URL</label><input name='api' value='%s'/>"
+        "<label>Heartbeat (s)</label><input name='hb' value='%u'/>"
+        "<label>Location (s)</label><input name='loc' value='%u'/>"
+        "<label>Input 1 Desc</label><input name='in1' value='%s'/>"
+        "<label><input type='checkbox' name='ds' value='1' %s/> Deep Sleep Mode</label>"
         "<button type='submit'>Save</button>"
         "</form>"
 
@@ -165,6 +167,7 @@ static esp_err_t http_root_get(httpd_req_t *req)
         (unsigned)s_cfg.heartbeat_interval_s,
         (unsigned)s_cfg.location_interval_s,
         s_cfg.input1_desc,
+        s_cfg.deep_sleep_enabled ? "checked" : "",
         net_count, NYS_MAX_NETWORKS,
         net_list);
 
@@ -202,20 +205,23 @@ static esp_err_t http_save_post(httpd_req_t *req)
     char in1[32] = {0};
     char hb_str[16] = {0};
     char loc_str[16] = {0};
+    char ds_str[4] = {0};
     uint32_t hb = 0, loc = 0;
 
     extract_field(buf, "api=", api_url, sizeof(api_url));
     extract_field(buf, "in1=", in1, sizeof(in1));
     extract_field(buf, "hb=", hb_str, sizeof(hb_str));
     extract_field(buf, "loc=", loc_str, sizeof(loc_str));
+    extract_field(buf, "ds=", ds_str, sizeof(ds_str));
 
     hb = atoi(hb_str);
     loc = atoi(loc_str);
+    int ds = (ds_str[0] == '1' || ds_str[0] == 'o') ? 1 : 0; // "1" or "on"
 
     free(buf);
 
     // Save to NVS
-    if (cfg_save_settings(hb, loc, in1, api_url) != ESP_OK) {
+    if (cfg_save_settings(hb, loc, in1, api_url, ds) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save settings to NVS");
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Save failed");
         return ESP_FAIL;
@@ -231,9 +237,12 @@ static esp_err_t http_save_post(httpd_req_t *req)
     strncpy(s_cfg.input1_desc, in1, sizeof(s_cfg.input1_desc) - 1);
     s_cfg.input1_desc[sizeof(s_cfg.input1_desc) - 1] = 0;
 
-    ESP_LOGI(TAG, "Settings saved: api=%s, hb=%u, loc=%u, in1=%s",
+    s_cfg.deep_sleep_enabled = (ds != 0);
+
+    ESP_LOGI(TAG, "Settings saved: api=%s, hb=%u, loc=%u, in1=%s, ds=%d",
              s_cfg.api_url, s_cfg.heartbeat_interval_s,
-             s_cfg.location_interval_s, s_cfg.input1_desc);
+             s_cfg.location_interval_s, s_cfg.input1_desc,
+             s_cfg.deep_sleep_enabled);
 
     httpd_resp_set_status(req, "303 See Other");
     httpd_resp_set_hdr(req, "Location", "/");
@@ -293,6 +302,40 @@ static esp_err_t http_net_add_post(httpd_req_t *req)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /net_delete?ssid=...
+// ─────────────────────────────────────────────────────────────────────────────
+static esp_err_t http_net_delete_get(httpd_req_t *req)
+{
+    // Extract ssid from query string
+    size_t qlen = httpd_req_get_url_query_len(req);
+    if (qlen == 0 || qlen > 128) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid");
+        return ESP_FAIL;
+    }
+
+    char query[129] = {0};
+    httpd_req_get_url_query_str(req, query, sizeof(query));
+
+    char ssid[33] = {0};
+    if (httpd_query_key_value(query, "ssid", ssid, sizeof(ssid)) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid param");
+        return ESP_FAIL;
+    }
+    url_decode_inplace(ssid);
+
+    esp_err_t err = cfg_delete_network(ssid);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Deleted network: %s", ssid);
+    } else {
+        ESP_LOGW(TAG, "Network not found: %s", ssid);
+    }
+
+    httpd_resp_set_status(req, "303 See Other");
+    httpd_resp_set_hdr(req, "Location", "/");
+    return httpd_resp_send(req, NULL, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────────────────────────────────────
 void web_start_server(void)
@@ -325,9 +368,16 @@ void web_start_server(void)
         .handler = http_save_post
     };
 
+    httpd_uri_t net_del = {
+        .uri = "/net_delete",
+        .method = HTTP_GET,
+        .handler = http_net_delete_get
+    };
+
     httpd_register_uri_handler(s_httpd, &root);
     httpd_register_uri_handler(s_httpd, &add);
     httpd_register_uri_handler(s_httpd, &save);
+    httpd_register_uri_handler(s_httpd, &net_del);
 
     ESP_LOGI(TAG, "Web server started");
 }
