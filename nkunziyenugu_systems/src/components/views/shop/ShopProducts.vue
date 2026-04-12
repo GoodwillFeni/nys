@@ -119,8 +119,7 @@ export default {
       return this.products.filter(p => String(p.product_name || '').toLowerCase().includes(s))
     },
     cartCount() {
-      const cart = this.getCart()
-      return cart.items.reduce((sum, i) => sum + (Number(i.qty) || 0), 0)
+      return this.$store.getters.cartCount || 0
     }
   },
   mounted() {
@@ -173,6 +172,7 @@ export default {
         })
       }
       this.setCart(cart)
+      this.$store.dispatch('updateCartCount')
 
       this.qtyById[product.id] = 1
       this.error = null

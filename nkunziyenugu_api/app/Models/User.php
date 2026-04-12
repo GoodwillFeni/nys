@@ -45,27 +45,4 @@ class User extends Authenticatable
     {
         $this->notify(new ResetPasswordNotification($token));
     }
-
-    function addUserManually($pdo) {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $username = trim($_POST['username']);
-            $email = trim($_POST['email']);
-            $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-            $role = $_POST['role']; // e.g., 'admin' or 'user'
-
-            // Basic validation
-            if (empty($username) || empty($email) || empty($password) || !in_array($role, ['admin', 'user'])) {
-                echo "Invalid input.";
-                return;
-            }
-
-            // Insert into database (adjust table/columns as needed)
-            $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)");
-            if ($stmt->execute([$username, $email, $password, $role])) {
-                echo "User added successfully.";
-            } else {
-                echo "Error adding user.";
-            }
-        }
-    }
 }

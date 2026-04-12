@@ -94,7 +94,13 @@ const routes = [
         path: '/Shop/MyOrders',
         name: 'ShopMyOrders',
         component: () => import('../components/views/shop/ShopMyOrders.vue'),
-        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/Shop/Orders',
+        name: 'AdminOrders',
+        component: () => import('../components/views/shop/AdminOrders.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
         path: '/Shop/POS',

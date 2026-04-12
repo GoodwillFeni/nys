@@ -8,6 +8,7 @@ use App\Models\ShopProduct;
 use App\Models\ShopCustomer;
 use App\Models\ShopCashflow;
 use App\Models\ShopCreditRequest;
+use App\Models\ShopOrder;
 use Illuminate\Support\Facades\DB;
 
 class ShopDashboardController extends ShopBaseController
@@ -61,10 +62,61 @@ class ShopDashboardController extends ShopBaseController
         $cashIn = (clone $cashflowQuery)->whereIn('transaction_type', ['Income', 'Cashup'])->sum('amount');
         $cashOut = (clone $cashflowQuery)->where('transaction_type', 'Expense')->sum('amount');
 
-        // Pending credit requests
+        // Pending credit requests (credit applications)
         $pendingCredits = ShopCreditRequest::where('account_id', $accountId)
             ->where('status', 'pending')
             ->count();
+
+        // Online orders this month — revenue counted only when payment is actually received:
+        //   deposit     → approved or completed (deposit slip verified = money in hand)
+        //   pay_in_store → completed only (customer pays on collection, not at approval)
+        //   credit      → only when paid_at is set (approved ≠ paid for credit)
+        $onlinePaidOrders = ShopOrder::where('account_id', $accountId)
+            ->whereDate('created_at', '>=', $monthStart)
+            ->whereDate('created_at', '<=', $today)
+            ->where(function ($q) {
+                // deposit: payment verified at approval
+                $q->where(function ($q2) {
+                    $q2->where('payment_method', 'deposit')
+                       ->whereIn('status', [ShopOrder::STATUS_APPROVED, ShopOrder::STATUS_COMPLETED]);
+                })
+                // pay_in_store: cash received only when customer collects
+                ->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'pay_in_store')
+                       ->where('status', ShopOrder::STATUS_COMPLETED);
+                })
+                // credit: counted only once the customer has actually paid
+                ->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'credit')
+                       ->whereNotNull('paid_at');
+                });
+            });
+
+        $onlineOrdersCount   = $onlinePaidOrders->count();
+        $onlineOrdersRevenue = round($onlinePaidOrders->sum('total_amount'), 2);
+
+        // Online profit: SUM(order_items.qty × products.prof_per_product) for paid orders
+        $paidOrderIds = (clone $onlinePaidOrders)->pluck('id');
+        $onlineOrdersProfit = round(
+            \DB::table('shop_order_items')
+                ->join('shop_products', 'shop_order_items.product_id', '=', 'shop_products.id')
+                ->whereIn('shop_order_items.order_id', $paidOrderIds)
+                ->sum(\DB::raw('shop_order_items.qty * shop_products.prof_per_product')),
+            2
+        );
+
+        // Pending online orders (waiting for approval)
+        $pendingOnlineOrders = ShopOrder::where('account_id', $accountId)
+            ->where('status', ShopOrder::STATUS_PENDING_APPROVAL)
+            ->count();
+
+        // Credit orders: approved but not yet paid
+        $pendingCreditOrders = ShopOrder::where('account_id', $accountId)
+            ->whereIn('status', [ShopOrder::STATUS_APPROVED, ShopOrder::STATUS_COMPLETED])
+            ->where('payment_method', 'credit')
+            ->whereNull('paid_at')
+            ->selectRaw('COUNT(*) as count, SUM(total_amount) as total')
+            ->first();
 
         // Top selling products (this month)
         $topProducts = DB::table('shop_pos_sale_items')
@@ -86,25 +138,42 @@ class ShopDashboardController extends ShopBaseController
             ->get();
 
         return response()->json([
-            'total_products' => $totalProducts,
-            'low_stock_products' => $lowStockProducts,
-            'total_customers' => $totalCustomers,
-            'pending_credits' => $pendingCredits,
+            'total_products'      => $totalProducts,
+            'low_stock_products'  => $lowStockProducts,
+            'total_customers'     => $totalCustomers,
+            'pending_credits'     => $pendingCredits,
+
+            // POS in-store sales
             'month_sales' => [
-                'count' => $salesCount,
+                'count'   => $salesCount,
                 'revenue' => round($totalSalesAmount, 2),
-                'profit' => round($totalProfit, 2),
-                'unpaid' => $unpaidCount,
+                'profit'  => round($totalProfit, 2),
+                'unpaid'  => $unpaidCount,
             ],
+
+            // Online customer orders (paid only — credit excluded until paid)
+            'online_orders' => [
+                'count'            => $onlineOrdersCount,
+                'revenue'          => $onlineOrdersRevenue,
+                'profit'           => $onlineOrdersProfit,
+                'pending_approval' => $pendingOnlineOrders,
+            ],
+
+            // Credit orders approved but awaiting payment — NOT in revenue
+            'pending_credit_orders' => [
+                'count' => (int) ($pendingCreditOrders->count ?? 0),
+                'total' => round((float) ($pendingCreditOrders->total ?? 0), 2),
+            ],
+
             'cashflow' => [
-                'cash_in' => round($cashIn, 2),
+                'cash_in'  => round($cashIn, 2),
                 'cash_out' => round($cashOut, 2),
-                'net' => round($cashIn - $cashOut, 2),
+                'net'      => round($cashIn - $cashOut, 2),
             ],
             'sales_by_payment' => $salesByPayment,
-            'monthly_trend' => $monthlyTrend,
-            'top_products' => $topProducts,
-            'recent_sales' => $recentSales,
+            'monthly_trend'    => $monthlyTrend,
+            'top_products'     => $topProducts,
+            'recent_sales'     => $recentSales,
         ]);
     }
 }

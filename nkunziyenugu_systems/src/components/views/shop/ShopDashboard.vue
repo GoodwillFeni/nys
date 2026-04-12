@@ -8,6 +8,7 @@
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <button class="button-info" @click="$router.push({ name: 'ShopProducts' })">Products</button>
           <button class="button-info" @click="$router.push({ name: 'ShopPOS' })">POS</button>
+          <button class="button-info" @click="$router.push({ name: 'AdminOrders' })">Orders</button>
           <button class="button-info" @click="$router.push({ name: 'ShopCashFlow' })">Cash Flow</button>
           <button class="button-info" @click="$router.push({ name: 'ShopSalesSummary' })">Sales Report</button>
         </div>
@@ -27,16 +28,18 @@
       <div class="summary-card">
         <i class="bi bi-cash-stack icon blue"></i>
         <div>
-          <span class="value">R{{ fmt(d.month_sales?.revenue) }}</span>
+          <span class="value">R{{ fmt((d.month_sales?.revenue || 0) + (d.online_orders?.revenue || 0)) }}</span>
           <span class="label">Revenue</span>
+          <span class="breakdown">POS R{{ fmt(d.month_sales?.revenue) }} &bull; Online R{{ fmt(d.online_orders?.revenue) }}</span>
         </div>
       </div>
 
-      <div class="summary-card" :class="{ 'profit-card': (d.month_sales?.profit || 0) >= 0, 'loss-card': (d.month_sales?.profit || 0) < 0 }">
+      <div class="summary-card" :class="{ 'profit-card': ((d.month_sales?.profit || 0) + (d.online_orders?.profit || 0)) >= 0, 'loss-card': ((d.month_sales?.profit || 0) + (d.online_orders?.profit || 0)) < 0 }">
         <i class="bi bi-graph-up-arrow icon"></i>
         <div>
-          <span class="value">R{{ fmt(d.month_sales?.profit) }}</span>
+          <span class="value">R{{ fmt((d.month_sales?.profit || 0) + (d.online_orders?.profit || 0)) }}</span>
           <span class="label">Profit</span>
+          <span class="breakdown">POS R{{ fmt(d.month_sales?.profit) }} &bull; Online R{{ fmt(d.online_orders?.profit) }}</span>
         </div>
       </div>
 
@@ -44,7 +47,7 @@
         <i class="bi bi-clock-history icon orange"></i>
         <div>
           <span class="value">{{ d.month_sales?.unpaid || 0 }}</span>
-          <span class="label">Unpaid Sales</span>
+          <span class="label">POS Awaiting Payment</span>
         </div>
       </div>
     </div>
@@ -79,7 +82,35 @@
         <i class="bi bi-credit-card icon orange"></i>
         <div>
           <span class="value">{{ d.pending_credits }}</span>
-          <span class="label">Pending Credits</span>
+          <span class="label">Credit Applications</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Online orders row -->
+    <div class="summary-row">
+      <div class="summary-card">
+        <i class="bi bi-bag icon blue"></i>
+        <div>
+          <span class="value">{{ d.online_orders?.count || 0 }}</span>
+          <span class="label">Online Orders (Paid)</span>
+        </div>
+      </div>
+
+
+<div class="summary-card" :class="{ 'warning-card': d.online_orders?.pending_approval > 0 }">
+        <i class="bi bi-hourglass-split icon orange"></i>
+        <div>
+          <span class="value">{{ d.online_orders?.pending_approval || 0 }}</span>
+          <span class="label">Awaiting Approval</span>
+        </div>
+      </div>
+
+      <div class="summary-card" :class="{ 'warning-card': d.pending_credit_orders?.count > 0 }">
+        <i class="bi bi-wallet2 icon orange"></i>
+        <div>
+          <span class="value">R{{ fmt(d.pending_credit_orders?.total) }}</span>
+          <span class="label">Credit Orders — Cash Due</span>
         </div>
       </div>
     </div>
@@ -336,6 +367,8 @@ export default {
 .red { color: #ef5350; }
 
 .warning-card { border-left: 3px solid #ffa726; }
+
+.breakdown { font-size: 10px; color: rgba(255,255,255,0.4); display: block; margin-top: 3px; }
 .profit-card .icon { color: #66bb6a; }
 .profit-card .value { color: #66bb6a; }
 .loss-card .icon { color: #ef5350; }

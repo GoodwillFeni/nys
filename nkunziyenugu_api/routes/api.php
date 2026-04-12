@@ -45,7 +45,9 @@ Route::middleware('auth:sanctum')->group(function () {
             'is_impersonating' => session()->has('impersonator_id')
         ]);
     });
-    Route::get('/dashboard', [DashboardController::class, 'index']);
+
+    // Account-scoped dashboard (X-Account-ID optional for super admin)
+    Route::middleware('account.access')->get('/dashboard', [DashboardController::class, 'index']);
 
     // Accounts
     Route::get('/accounts/available', [AccountsController::class, 'availableAccounts']);
@@ -63,104 +65,101 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/audit-logs', [AuditLogController::class, 'getLogs']);
     Route::get('/audit-logs/statistics', [AuditLogController::class, 'getStatistics']);
 
-    // Shop - Dashboard
-    Route::get('/shop/dashboard', [ShopDashboardController::class, 'dashboard']);
+    // ── Account-scoped routes (X-Account-ID required; super admin bypasses check) ──
+    Route::middleware('account.access')->group(function () {
 
-    // Shop - Products (all authenticated users with account access can view)
-    Route::get('/shop/products', [ShopProductController::class, 'index']);
-    Route::get('/shop/products/{product}', [ShopProductController::class, 'show']);
-    // Shop - Products (privileged roles only)
-    Route::post('/shop/products', [ShopProductController::class, 'store']);
-    Route::put('/shop/products/{product}', [ShopProductController::class, 'update']);
-    Route::delete('/shop/products/{product}', [ShopProductController::class, 'destroy']);
+        // Shop
+        Route::get('/shop/dashboard', [ShopDashboardController::class, 'dashboard']);
+        Route::get('/shop/products', [ShopProductController::class, 'index']);
+        Route::get('/shop/products/{product}', [ShopProductController::class, 'show']);
+        Route::post('/shop/products', [ShopProductController::class, 'store']);
+        Route::put('/shop/products/{product}', [ShopProductController::class, 'update']);
+        Route::delete('/shop/products/{product}', [ShopProductController::class, 'destroy']);
 
-    // Shop - Online Orders (customer cart checkout)
-    Route::get('/shop/orders/my', [ShopOrderController::class, 'myOrders']);
-    Route::post('/shop/orders', [ShopOrderController::class, 'createOrder']);
+        Route::get('/shop/orders/my', [ShopOrderController::class, 'myOrders']);
+        Route::post('/shop/orders', [ShopOrderController::class, 'createOrder']);
+        Route::post('/shop/orders/{order}/proof', [ShopOrderController::class, 'uploadProof']);
+        Route::post('/shop/orders/{order}/ask', [ShopOrderController::class, 'askCustomer']);
+        // Admin order management
+        Route::get('/shop/orders', [ShopOrderController::class, 'adminIndex']);
+        Route::put('/shop/orders/{order}', [ShopOrderController::class, 'adminUpdate']);
 
-    // Shop - POS (privileged roles only; enforced in controller)
-    Route::get('/shop/pos/cart', [ShopPosController::class, 'getOpenCart']);
-    Route::post('/shop/pos/cart/items', [ShopPosController::class, 'addItem']);
-    Route::put('/shop/pos/cart/items/{item}', [ShopPosController::class, 'updateItem']);
-    Route::delete('/shop/pos/cart/items/{item}', [ShopPosController::class, 'removeItem']);
-    Route::post('/shop/pos/checkout', [ShopPosController::class, 'checkout']);
-    Route::put('/shop/pos/sales/{sale}', [ShopPosController::class, 'updateSale']);
-    Route::post('/shop/pos/sales/{sale}/mark-paid', [ShopPosController::class, 'markSalePaid']);
-    Route::get('/shop/pos/sales-report', [ShopPosController::class, 'salesReport']);
-    Route::put('/shop/pos/sale-items/{item}', [ShopPosController::class, 'updateSaleItem']);
+        Route::get('/shop/pos/cart', [ShopPosController::class, 'getOpenCart']);
+        Route::post('/shop/pos/cart/items', [ShopPosController::class, 'addItem']);
+        Route::put('/shop/pos/cart/items/{item}', [ShopPosController::class, 'updateItem']);
+        Route::delete('/shop/pos/cart/items/{item}', [ShopPosController::class, 'removeItem']);
+        Route::post('/shop/pos/checkout', [ShopPosController::class, 'checkout']);
+        Route::put('/shop/pos/sales/{sale}', [ShopPosController::class, 'updateSale']);
+        Route::post('/shop/pos/sales/{sale}/mark-paid', [ShopPosController::class, 'markSalePaid']);
+        Route::get('/shop/pos/sales-report', [ShopPosController::class, 'salesReport']);
+        Route::put('/shop/pos/sale-items/{item}', [ShopPosController::class, 'updateSaleItem']);
 
-    // Shop - Customers (privileged roles only; enforced in controller)
-    Route::get('/shop/customers', [ShopCustomerController::class, 'index']);
-    Route::post('/shop/customers', [ShopCustomerController::class, 'store']);
+        Route::get('/shop/customers', [ShopCustomerController::class, 'index']);
+        Route::post('/shop/customers', [ShopCustomerController::class, 'store']);
 
-    // Shop - Customer Portal (Customer role; enforced in controller)
-    Route::get('/shop/customer/me', [ShopCustomerPortalController::class, 'me']);
-    Route::get('/shop/customer/credit', [ShopCustomerPortalController::class, 'credit']);
-    Route::get('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'myCreditRequests']);
-    Route::post('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'requestCredit']);
+        Route::get('/shop/customer/me', [ShopCustomerPortalController::class, 'me']);
+        Route::get('/shop/customer/credit', [ShopCustomerPortalController::class, 'credit']);
+        Route::get('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'myCreditRequests']);
+        Route::post('/shop/customer/credit-requests', [ShopCustomerPortalController::class, 'requestCredit']);
 
-    // Shop - Credit Requests (privileged roles only; enforced in controller)
-    Route::get('/shop/credit-requests', [ShopCreditRequestController::class, 'index']);
-    Route::post('/shop/credit-requests/{creditRequest}/approve', [ShopCreditRequestController::class, 'approve']);
-    Route::post('/shop/credit-requests/{creditRequest}/decline', [ShopCreditRequestController::class, 'decline']);
+        Route::get('/shop/credit-requests', [ShopCreditRequestController::class, 'index']);
+        Route::post('/shop/credit-requests/{creditRequest}/approve', [ShopCreditRequestController::class, 'approve']);
+        Route::post('/shop/credit-requests/{creditRequest}/decline', [ShopCreditRequestController::class, 'decline']);
 
-    // Shop - Cashflow (privileged roles only; enforced in controller)
-    Route::get('/shop/cashflow', [ShopCashflowController::class, 'index']);
-    Route::get('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'show']);
-    Route::post('/shop/cashflow', [ShopCashflowController::class, 'store']);
-    Route::put('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'update']);
-    Route::delete('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'destroy']);
+        Route::get('/shop/cashflow', [ShopCashflowController::class, 'index']);
+        Route::get('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'show']);
+        Route::post('/shop/cashflow', [ShopCashflowController::class, 'store']);
+        Route::put('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'update']);
+        Route::delete('/shop/cashflow/{cashflow}', [ShopCashflowController::class, 'destroy']);
 
-    // Farm routes - all routes prefixed with /farm and protected by account.access middleware
-    // Route::middleware('account.access')->prefix('farm')->group(function () {
-    Route::get('farm/dashboard', [FarmController::class, 'dashboard']);
-    Route::get('farm/farms', [FarmController::class, 'index']); //
-    Route::post('farm/farms', [FarmController::class, 'store']); // Create new farm
-    Route::get('farm/farms/{farm}', [FarmController::class, 'show']); // Get farm details
-    Route::put('farm/farms/{farm}', [FarmController::class, 'update']);
-    Route::delete('farm/farms/{farm}', [FarmController::class, 'destroy']);
+        // Farm
+        Route::get('farm/dashboard', [FarmController::class, 'dashboard']);
+        Route::get('farm/farms', [FarmController::class, 'index']);
+        Route::post('farm/farms', [FarmController::class, 'store']);
+        Route::get('farm/farms/{farm}', [FarmController::class, 'show']);
+        Route::put('farm/farms/{farm}', [FarmController::class, 'update']);
+        Route::delete('farm/farms/{farm}', [FarmController::class, 'destroy']);
 
-    Route::get('farm/animals/types', [AnimalController::class, 'types']);
-    Route::post('farm/animals/types', [AnimalController::class, 'storeType']);
-    Route::get('farm/animals/breeds', [AnimalController::class, 'breeds']);
-    Route::post('farm/animals/breeds', [AnimalController::class, 'storeBreed']);
-    Route::get('farm/animals', [AnimalController::class, 'index']);
-    Route::post('farm/animals', [AnimalController::class, 'store']);
-    Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
-    Route::put('farm/animals/{animal}', [AnimalController::class, 'update']);
-    Route::post('farm/animals/{animal}/sell', [AnimalController::class, 'sell']);
-    Route::delete('farm/animals/{animal}', [AnimalController::class, 'destroy']);
+        Route::get('farm/animals/types', [AnimalController::class, 'types']);
+        Route::post('farm/animals/types', [AnimalController::class, 'storeType']);
+        Route::get('farm/animals/breeds', [AnimalController::class, 'breeds']);
+        Route::post('farm/animals/breeds', [AnimalController::class, 'storeBreed']);
+        Route::get('farm/animals', [AnimalController::class, 'index']);
+        Route::post('farm/animals', [AnimalController::class, 'store']);
+        Route::get('farm/animals/{animal}', [AnimalController::class, 'show']);
+        Route::put('farm/animals/{animal}', [AnimalController::class, 'update']);
+        Route::post('farm/animals/{animal}/sell', [AnimalController::class, 'sell']);
+        Route::delete('farm/animals/{animal}', [AnimalController::class, 'destroy']);
 
-    // Animal Events
-    Route::post('animal-events/single', [AnimalEventController::class, 'storeSingle']);
-    Route::post('animal-events/bulk', [AnimalEventController::class, 'storeBulk']);
-    Route::get('animal-events/list', [AnimalEventController::class, 'list']);
-    Route::get('animal-events/dashboard', [AnimalEventController::class, 'dashboard']);
-    Route::put('animal-events/{id}', [AnimalEventController::class, 'update']);
-    Route::delete('animal-events/{id}', [AnimalEventController::class, 'destroy']);
+        Route::post('animal-events/single', [AnimalEventController::class, 'storeSingle']);
+        Route::post('animal-events/bulk', [AnimalEventController::class, 'storeBulk']);
+        Route::get('animal-events/list', [AnimalEventController::class, 'list']);
+        Route::get('animal-events/dashboard', [AnimalEventController::class, 'dashboard']);
+        Route::put('animal-events/{id}', [AnimalEventController::class, 'update']);
+        Route::delete('animal-events/{id}', [AnimalEventController::class, 'destroy']);
 
-    // Animal Device Links
-    Route::post('farm/animals/devices/link', [AnimalDeviceLinkController::class, 'linkDevice']);
-    Route::post('farm/animals/devices/transfer', [AnimalDeviceLinkController::class, 'transferDevice']);
-    Route::put('farm/animals/devices/link/{linkId}', [AnimalDeviceLinkController::class, 'unlinkDevice']);
-    Route::get('farm/animals/{animalId}/devices', [AnimalDeviceLinkController::class, 'getAnimalDevices']);
-    Route::get('farm/devices/{deviceId}/animals', [AnimalDeviceLinkController::class, 'getDeviceAnimals']);
+        Route::post('farm/animals/devices/link', [AnimalDeviceLinkController::class, 'linkDevice']);
+        Route::post('farm/animals/devices/transfer', [AnimalDeviceLinkController::class, 'transferDevice']);
+        Route::put('farm/animals/devices/link/{linkId}', [AnimalDeviceLinkController::class, 'unlinkDevice']);
+        Route::get('farm/animals/{animalId}/devices', [AnimalDeviceLinkController::class, 'getAnimalDevices']);
+        Route::get('farm/devices/{deviceId}/animals', [AnimalDeviceLinkController::class, 'getDeviceAnimals']);
 
-    Route::get('farm/inventory/items', [InventoryController::class, 'items']);
-    Route::post('farm/inventory/items', [InventoryController::class, 'storeItem']);
-    Route::put('farm/inventory/items/{id}', [InventoryController::class, 'updateItem']);
-    Route::delete('farm/inventory/items/{id}', [InventoryController::class, 'destroyItem']);
-    Route::get('farm/inventory/movements', [InventoryController::class, 'movements']);
-    Route::post('farm/inventory/movements', [InventoryController::class, 'movement']);
+        Route::get('farm/inventory/items', [InventoryController::class, 'items']);
+        Route::post('farm/inventory/items', [InventoryController::class, 'storeItem']);
+        Route::put('farm/inventory/items/{id}', [InventoryController::class, 'updateItem']);
+        Route::delete('farm/inventory/items/{id}', [InventoryController::class, 'destroyItem']);
+        Route::get('farm/inventory/movements', [InventoryController::class, 'movements']);
+        Route::post('farm/inventory/movements', [InventoryController::class, 'movement']);
 
-    Route::get('farm/reports/pnl', [FarmReportController::class, 'pnl']);
-//});
+        Route::get('farm/reports/pnl', [FarmReportController::class, 'pnl']);
+
+    }); // end account.access
 });
 
 //End of protected routes
 
 //Device management routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'account.access'])->group(function () {
     Route::get('/devices', [DeviceController::class, 'index']);
     Route::post('/devices', [DeviceController::class, 'store']);
     Route::get('/devices/{device}/logs', [DeviceController::class, 'logs']);

@@ -6,7 +6,13 @@ export default {
     token: localStorage.getItem('token'),
     accounts: JSON.parse(localStorage.getItem('accounts')),
     activeAccount: JSON.parse(localStorage.getItem('activeAccount')),
-    expires_at: JSON.parse(localStorage.getItem('expires_at'))
+    expires_at: JSON.parse(localStorage.getItem('expires_at')),
+    cartCount: (() => {
+      try {
+        const cart = JSON.parse(localStorage.getItem('shop_cart') || '{"items":[]}')
+        return (cart.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0)
+      } catch { return 0 }
+    })()
   },
 
   mutations: {
@@ -27,6 +33,10 @@ export default {
     SET_ACTIVE_ACCOUNT(state, account) {
       state.activeAccount = account
       localStorage.setItem('activeAccount', JSON.stringify(account))
+    },
+
+    SET_CART_COUNT(state, count) {
+      state.cartCount = count
     },
 
     LOGOUT(state) { // Clear all authentication data
@@ -55,6 +65,16 @@ export default {
 
     switchAccount({ commit }, account) {
       commit('SET_ACTIVE_ACCOUNT', account)
+    },
+
+    updateCartCount({ commit }) {
+      try {
+        const cart = JSON.parse(localStorage.getItem('shop_cart') || '{"items":[]}')
+        const count = (cart.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0)
+        commit('SET_CART_COUNT', count)
+      } catch {
+        commit('SET_CART_COUNT', 0)
+      }
     }
   },
 
@@ -68,6 +88,7 @@ export default {
     isOwner: (state, getters) => getters.normalizedRole === 'owner',
     isAdmin: (state, getters) => getters.normalizedRole === 'admin',
     isViewer: (state, getters) => getters.normalizedRole === 'viewer',
-    isCustomer: (state, getters) => getters.normalizedRole === 'customer'
+    isCustomer: (state, getters) => getters.normalizedRole === 'customer',
+    cartCount: state => state.cartCount
   }
 }

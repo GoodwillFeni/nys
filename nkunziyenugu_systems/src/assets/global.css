@@ -104,6 +104,12 @@ label {
     color: #fff;
 }
 
+/* Fix dropdown option background across the whole app */
+select option {
+    background: #27253f;
+    color: #fff;
+}
+
 /* Progress bar */
 /* Top loading bar container */
 .app-loading-bar {
@@ -291,16 +297,56 @@ input[type="date"]:focus {
   visibility: visible;
   opacity: 1;
 }
-/* RESPONSIVE */
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Mobile-first breakpoints
+   ═══════════════════════════════════════════════════ */
 @media (max-width: 768px) {
+
+  /* Auth forms */
   .login-container {
     flex-direction: column;
     height: auto;
   }
-
   .login-left {
     padding: 30px;
     text-align: center;
+  }
+
+  /* Two-panel form layout → single column */
+  .form-container {
+    flex-direction: column;
+    height: auto;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+  }
+  .form-left {
+    padding: 30px 20px;
+  }
+  .form-right {
+    padding: 30px 20px;
+  }
+
+  /* Tables — horizontal scroll on small screens */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  /* Buttons — full width on mobile when inside a block */
+  .button-info,
+  .button-danger,
+  .button-success,
+  .button-warning {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  /* Larger touch targets for nav links */
+  label {
+    font-size: 14px;
   }
 }
 

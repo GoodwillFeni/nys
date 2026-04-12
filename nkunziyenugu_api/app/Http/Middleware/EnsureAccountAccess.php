@@ -11,17 +11,17 @@ class EnsureAccountAccess
     public function handle(Request $request, Closure $next)
     {
         $accountId = $request->header('X-Account-ID');
+        $user      = $request->user();
 
-        if (!$accountId) {
-            return response()->json(['message' => 'X-Account-ID header required'], 400);
-        }
-
-        $user = $request->user();
-
-        // Super admin bypass
+        // Super admin: X-Account-ID is optional — they can access any account
         if ($user->is_super_admin ?? false) {
             $request->merge(['account_id' => $accountId]);
             return $next($request);
+        }
+
+        // Regular users must supply X-Account-ID
+        if (!$accountId) {
+            return response()->json(['message' => 'X-Account-ID header required'], 400);
         }
 
         $hasAccess = $user->accounts()
