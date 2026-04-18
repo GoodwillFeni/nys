@@ -27,7 +27,8 @@ class UserController extends Controller
             'password' => 'required|min:6',
             'accounts' => 'required|array|min:1',
             'accounts.*.id' => 'required|exists:accounts,id',
-            'accounts.*.role' => 'required|in:Owner,Admin,Viewer',
+            'accounts.*.role' => 'required|in:Owner,Admin,Viewer,FarmWorker,ShopKeeper,Customer,Super_Admin',
+            'accounts.*.can_manage_devices' => 'nullable|boolean',
         ]);
 
         DB::beginTransaction();
@@ -55,7 +56,8 @@ class UserController extends Controller
                 }
 
                 $user->accounts()->attach($acc['id'], [
-                    'role' => $acc['role']
+                    'role' => $acc['role'],
+                    'can_manage_devices' => !empty($acc['can_manage_devices']),
                 ]);
             }
 
@@ -164,9 +166,10 @@ public function getUserDetails(Request $request, $id)
         ], 404);
     }
 
-    // Add pivot role to each account
+    // Add pivot role + flags to each account
     $user->accounts->each(function($account) {
         $account->role = $account->pivot->role;
+        $account->can_manage_devices = (bool) ($account->pivot->can_manage_devices ?? false);
     });
 
     return response()->json([
@@ -205,7 +208,8 @@ public function updateUser(Request $request, $id)
         'password' => 'nullable|min:6',
         'accounts' => 'required|array|min:1',
         'accounts.*.id' => 'required|exists:accounts,id',
-        'accounts.*.role' => 'required|in:Owner,Admin,Viewer,Super_Admin',
+        'accounts.*.role' => 'required|in:Owner,Admin,Viewer,FarmWorker,ShopKeeper,Customer,Super_Admin',
+        'accounts.*.can_manage_devices' => 'nullable|boolean',
     ]);
 
     DB::beginTransaction();
@@ -231,7 +235,10 @@ public function updateUser(Request $request, $id)
                     throw new \Exception("Not allowed to assign account ID {$acc['id']}");
                 }
             }
-            $syncData[$acc['id']] = ['role' => $acc['role']];
+            $syncData[$acc['id']] = [
+                'role' => $acc['role'],
+                'can_manage_devices' => !empty($acc['can_manage_devices']),
+            ];
         }
 
         $user->accounts()->sync($syncData);

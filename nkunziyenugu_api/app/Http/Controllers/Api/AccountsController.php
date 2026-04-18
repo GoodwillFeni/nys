@@ -157,7 +157,7 @@ class AccountsController extends Controller
                 ->where('accounts.id', $id)
                 ->first();
 
-            if (!$userAccount || $userAccount->pivot->role !== 'owner') {
+            if (!$userAccount || strtolower($userAccount->pivot->role) !== 'owner') {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Only account owners can update accounts'

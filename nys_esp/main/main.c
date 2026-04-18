@@ -18,6 +18,7 @@
 #include "../components/gps/gps.h"
 #include "../components/input/input.h"
 #include "../components/web/web_server.h"
+#include "../components/ble_cfg/ble_cfg.h"
 
 extern nys_cfg_t s_cfg;
 
@@ -155,6 +156,12 @@ static void deep_sleep_flow(void)
              (unsigned)s_rtc.boot_count, (int)wake_cause);
 
     hw_init_led();
+
+    // Start BLE config server during the wake window (user can configure
+    // device while it is awake; BLE powers down when device deep-sleeps).
+    if (ble_cfg_init(&s_cfg) != ESP_OK) {
+        ESP_LOGW(TAG, "BLE config server failed to start (continuing)");
+    }
 
     // Configure input GPIOs (needed for reading state + wake config)
     gpio_config_t in_conf = {
@@ -304,6 +311,11 @@ static void always_on_flow(void)
 
     sender_start_task();
     web_start_server();
+
+    // Start BLE config server (coexists with WiFi)
+    if (ble_cfg_init(&s_cfg) != ESP_OK) {
+        ESP_LOGW(TAG, "BLE config server failed to start (continuing)");
+    }
 
     // GPS
     hw_init_gps_uart();

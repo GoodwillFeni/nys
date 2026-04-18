@@ -11,8 +11,10 @@ use App\Models\FarmTransaction;
 use App\Models\InventoryItem;
 use App\Models\ShopPosSale;
 use App\Models\ShopProduct;
+use App\Models\ShopOrder;
 use App\Models\Device;
 use App\Models\AuditLog;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -129,11 +131,43 @@ class DashboardController extends Controller
                 ->whereDate('sale_datetime', '>=', $monthStart)
                 ->whereDate('sale_datetime', '<=', $today);
 
+            $posRevenue = round((clone $monthlySales)->sum('total_amount'), 2);
+            $posProfit  = round((clone $monthlySales)->sum('total_profit'), 2);
+            $posCount   = (clone $monthlySales)->count();
+
+            // Paid online orders this month (same revenue rules as ShopDashboard)
+            $onlinePaid = ShopOrder::where('account_id', $accountId)
+                ->whereDate('created_at', '>=', $monthStart)
+                ->whereDate('created_at', '<=', $today)
+                ->where(function ($q) {
+                    $q->where(function ($q2) {
+                        $q2->where('payment_method', 'deposit')
+                           ->whereIn('status', [ShopOrder::STATUS_APPROVED, ShopOrder::STATUS_COMPLETED]);
+                    })->orWhere(function ($q2) {
+                        $q2->where('payment_method', 'pay_in_store')
+                           ->where('status', ShopOrder::STATUS_COMPLETED);
+                    })->orWhere(function ($q2) {
+                        $q2->where('payment_method', 'credit')
+                           ->whereNotNull('paid_at');
+                    });
+                });
+
+            $onlineRevenue = round((clone $onlinePaid)->sum('total_amount'), 2);
+            $onlineCount   = (clone $onlinePaid)->count();
+
+            $onlineProfit = round(
+                DB::table('shop_order_items')
+                    ->join('shop_products', 'shop_order_items.product_id', '=', 'shop_products.id')
+                    ->whereIn('shop_order_items.order_id', (clone $onlinePaid)->pluck('id'))
+                    ->sum(DB::raw('shop_order_items.qty * shop_products.prof_per_product')),
+                2
+            );
+
             $shop = [
-                'revenue' => round((clone $monthlySales)->sum('total_amount'), 2),
-                'profit' => round((clone $monthlySales)->sum('total_profit'), 2),
-                'sales_count' => (clone $monthlySales)->count(),
-                'unpaid' => $unpaidSales,
+                'revenue'     => round($posRevenue + $onlineRevenue, 2),
+                'profit'      => round($posProfit + $onlineProfit, 2),
+                'sales_count' => $posCount + $onlineCount,
+                'unpaid'      => $unpaidSales,
             ];
         }
 

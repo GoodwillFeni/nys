@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.output/
+.nuxt/
+
+# Caches
+.cache/
+.eslintcache
+.stylelintcache
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Lock files (large, not useful for code understanding)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Assets that bloat context
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.mp4
+*.mp3
+
+# Maps
+*.map

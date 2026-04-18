@@ -62,7 +62,17 @@
               <option value="Owner">Owner</option>
               <option value="Admin">Admin</option>
               <option value="Viewer">Viewer</option>
+              <option value="FarmWorker">Farm Worker</option>
+              <option value="ShopKeeper">Shop Keeper</option>
+              <option value="Customer">Customer</option>
             </select>
+          </div>
+
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="form.can_manage_devices" class="checkbox-input" />
+              <span>Allow this user to configure devices via mobile app (Bluetooth)</span>
+            </label>
           </div>
 
           <div class="row">
@@ -102,7 +112,8 @@ export default {
         email: "",
         phone: "",
         password: "",
-        role: ""
+        role: "",
+        can_manage_devices: false
       }
     };
   },
@@ -141,8 +152,10 @@ export default {
         this.form.phone = user.phone || "";
         // Password left blank
         if (user.accounts && user.accounts.length > 0) {
-          this.selectedAccount = user.accounts[0].id;
-          this.form.role = user.accounts[0].role;
+          const acc = user.accounts[0];
+          this.selectedAccount = acc.id;
+          this.form.role = acc.role ?? acc.pivot?.role;
+          this.form.can_manage_devices = !!(acc.pivot?.can_manage_devices ?? acc.can_manage_devices);
         }
 
       } catch (error) {
@@ -163,7 +176,8 @@ export default {
           accounts: [
             {
               id: this.selectedAccount,
-              role: this.form.role
+              role: this.form.role,
+              can_manage_devices: this.form.can_manage_devices
             }
           ]
         };
@@ -266,6 +280,25 @@ export default {
 .input-group input:focus,
 .input-group select:focus {
   border-color: #6a5cff;
+}
+
+/* CHECKBOX */
+.checkbox-group {
+  margin-bottom: 15px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+}
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #6a5cff;
 }
 
 /* RESPONSIVE */

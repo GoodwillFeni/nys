@@ -38,7 +38,7 @@ class User extends Authenticatable
     public function accounts()
     {
         return $this->belongsToMany(Account::class, 'account_users')
-                    ->withPivot('role')
+                    ->withPivot('role', 'can_manage_devices')
                     ->wherePivot('deleted_flag', 0);
     }
     public function sendPasswordResetNotification($token)

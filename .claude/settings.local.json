@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -iE \"\\\\.\\(vue|js\\)$\")",
+      "Bash(xargs wc *)",
+      "Bash(npx --yes create-expo-app@latest nys_app --template blank-typescript)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('reanimated:', p.dependencies['react-native-reanimated']\\); console.log\\('drawer:', p.dependencies['@react-navigation/drawer']\\); console.log\\('gesture-handler:', p.dependencies['react-native-gesture-handler']\\);\")",
+      "Bash(node -e \"try { const p = require\\('react-native-worklets/package.json'\\); console.log\\('worklets version:', p.version\\); } catch\\(e\\) { console.log\\('worklets not installed'\\); }\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\goodw\\.claude\\plans"
+    ]
+  }
+}

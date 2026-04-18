@@ -38,20 +38,93 @@ class ShopDashboardController extends ShopBaseController
         $salesCount = (clone $monthlySales)->count();
         $unpaidCount = (clone $monthlySales)->where('is_paid', false)->count();
 
-        // Sales by payment method
-        $salesByPayment = ShopPosSale::where('account_id', $accountId)
+        // Sales by payment method — POS rows
+        $posByPayment = DB::table('shop_pos_sales')
+            ->where('account_id', $accountId)
             ->whereDate('sale_datetime', '>=', $monthStart)
             ->selectRaw('payment_method, COUNT(*) as count, SUM(total_amount) as total')
             ->groupBy('payment_method')
             ->get();
 
-        // Monthly sales trend (last 6 months)
-        $monthlyTrend = ShopPosSale::where('account_id', $accountId)
-            ->where('sale_datetime', '>=', now()->subMonths(6)->startOfMonth())
-            ->selectRaw("DATE_FORMAT(sale_datetime, '%Y-%m') as month, SUM(total_amount) as revenue, SUM(total_profit) as profit, COUNT(*) as count")
-            ->groupBy('month')
-            ->orderBy('month')
+        // Sales by payment method — paid online orders
+        $onlineByPayment = DB::table('shop_orders')
+            ->where('account_id', $accountId)
+            ->whereDate('created_at', '>=', $monthStart)
+            ->whereDate('created_at', '<=', $today)
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->where('payment_method', 'deposit')
+                       ->whereIn('status', ['approved', 'completed']);
+                })->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'pay_in_store')
+                       ->where('status', 'completed');
+                })->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'credit')
+                       ->whereNotNull('paid_at');
+                });
+            })
+            ->selectRaw('payment_method, COUNT(*) as count, SUM(total_amount) as total')
+            ->groupBy('payment_method')
             ->get();
+
+        // Merge the two collections by payment_method key
+        $paymentMap = [];
+        foreach ($posByPayment as $row) {
+            $key = $row->payment_method ?? 'Unknown';
+            $paymentMap[$key] = ['payment_method' => $key, 'count' => $row->count, 'total' => $row->total];
+        }
+        foreach ($onlineByPayment as $row) {
+            $key = $row->payment_method ?? 'Unknown';
+            if (isset($paymentMap[$key])) {
+                $paymentMap[$key]['count'] += $row->count;
+                $paymentMap[$key]['total'] += $row->total;
+            } else {
+                $paymentMap[$key] = ['payment_method' => $key, 'count' => $row->count, 'total' => $row->total];
+            }
+        }
+        $salesByPayment = array_values($paymentMap);
+
+        // Monthly trend (last 6 months) — POS sales
+        $trendFrom = now()->subMonths(6)->startOfMonth()->toDateTimeString();
+
+        $posTrend = DB::table('shop_pos_sales')
+            ->where('account_id', $accountId)
+            ->where('sale_datetime', '>=', $trendFrom)
+            ->selectRaw("DATE_FORMAT(sale_datetime, '%Y-%m') as month, SUM(total_amount) as revenue, SUM(total_profit) as profit")
+            ->groupBy('month')
+            ->get()
+            ->keyBy('month');
+
+        // Monthly trend — paid online orders (profit approximated as 0; exact online profit is expensive to join per month)
+        $onlineTrend = DB::table('shop_orders')
+            ->where('account_id', $accountId)
+            ->where('created_at', '>=', $trendFrom)
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->where('payment_method', 'deposit')
+                       ->whereIn('status', ['approved', 'completed']);
+                })->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'pay_in_store')
+                       ->where('status', 'completed');
+                })->orWhere(function ($q2) {
+                    $q2->where('payment_method', 'credit')
+                       ->whereNotNull('paid_at');
+                });
+            })
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, SUM(total_amount) as revenue")
+            ->groupBy('month')
+            ->get();
+
+        // Merge online revenue into POS trend
+        foreach ($onlineTrend as $row) {
+            if (isset($posTrend[$row->month])) {
+                $posTrend[$row->month]->revenue += $row->revenue;
+            } else {
+                $posTrend[$row->month] = (object) ['month' => $row->month, 'revenue' => $row->revenue, 'profit' => 0];
+            }
+        }
+
+        $monthlyTrend = collect($posTrend)->values()->sortBy('month')->values();
 
         // Cashflow this month
         $cashflowQuery = ShopCashflow::where('account_id', $accountId)

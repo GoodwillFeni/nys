@@ -14,4 +14,5 @@ idf_component_register(
         gps
         input
         web
+        ble_cfg
 )
