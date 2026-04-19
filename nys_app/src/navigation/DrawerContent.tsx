@@ -14,7 +14,6 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   const user = useAuthStore((s) => s.user);
   const accounts = useAuthStore((s) => s.accounts);
   const activeAccountId = useAuthStore((s) => s.activeAccountId);
-  const role = useAuthStore((s) => s.activeRole());
   const logout = useAuthStore((s) => s.logout);
   const active = accounts.find((a) => a.id === activeAccountId);
 
@@ -40,7 +39,6 @@ export function DrawerContent(props: DrawerContentComponentProps) {
         <Text style={styles.userMeta}>{user?.email}</Text>
         <View style={styles.badgeRow}>
           <Text style={styles.badge}>{active?.name ?? 'No account'}</Text>
-          {role && <Text style={styles.badge}>{role}</Text>}
         </View>
       </LinearGradient>
 

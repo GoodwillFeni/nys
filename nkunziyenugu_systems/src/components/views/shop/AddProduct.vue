@@ -113,11 +113,7 @@ export default {
 
     computed: {
         isPrivileged() {
-            return (
-                !!this.$store?.getters?.isAdmin ||
-                !!this.$store?.getters?.isOwner ||
-                !!this.$store?.getters?.isSuperAdmin
-            )
+            return !!this.$store?.getters?.isPrivileged
         },
     },
 

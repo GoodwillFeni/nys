@@ -1,13 +1,16 @@
 import { api } from './client';
-import type { Account, LoginResponse, Role, User } from '../types';
+import type { Account, LoginResponse, User, RouteName, ActionName } from '../types';
 
 interface ApiAccount {
   id: number;
   name: string;
   type?: string;
-  role?: Role;
-  can_manage_devices?: boolean | number;
-  pivot?: { role?: Role; can_manage_devices?: boolean | number };
+  route_access?: RouteName[];
+  action_access?: ActionName[];
+  pivot?: {
+    route_access?: RouteName[] | string;
+    action_access?: ActionName[] | string;
+  };
 }
 
 interface RawLoginResponse {
@@ -18,15 +21,23 @@ interface RawLoginResponse {
   accounts: ApiAccount[];
 }
 
+function parseList<T extends string>(value: T[] | string | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  }
+  return [];
+}
+
 function normalizeAccount(a: ApiAccount): Account {
-  const role = (a.pivot?.role ?? a.role ?? 'Viewer') as Role;
-  const flag = a.pivot?.can_manage_devices ?? a.can_manage_devices;
+  const routes  = parseList<RouteName>(a.pivot?.route_access  ?? a.route_access);
+  const actions = parseList<ActionName>(a.pivot?.action_access ?? a.action_access);
   return {
     id: a.id,
     name: a.name,
     type: a.type,
-    role,
-    can_manage_devices: !!Number(flag ?? 0),
+    route_access: routes,
+    action_access: actions,
   };
 }
 
@@ -36,15 +47,11 @@ export async function login(loginId: string, password: string): Promise<LoginRes
     status: data.status,
     token: data.token,
     expires_at: data.expires_at,
-    user: data.user,
+    user: { ...data.user, is_super_admin: !!data.user.is_super_admin },
     accounts: data.accounts.map(normalizeAccount),
   };
 }
 
 export async function logoutApi(): Promise<void> {
-  try {
-    await api.post('/logout');
-  } catch {
-    /* ignore — token cleared locally regardless */
-  }
+  try { await api.post('/logout'); } catch { /* ignore */ }
 }

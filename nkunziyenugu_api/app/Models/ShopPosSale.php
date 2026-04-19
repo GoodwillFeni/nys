@@ -24,6 +24,7 @@ class ShopPosSale extends Model
         'paid_at',
         'paid_method',
         'paid_amount',
+        'payment_proof_path',
     ];
 
     protected $casts = [

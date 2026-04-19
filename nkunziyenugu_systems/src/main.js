@@ -22,35 +22,31 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
-  const account = JSON.parse(localStorage.getItem('activeAccount'))
-  const role = account?.pivot?.role || null
-  // console.log('Navigating to:', to.name, 'with role:', role)
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  const isSuper = !!user?.is_super_admin
 
-  if (token && String(role || '').toLowerCase() === 'customer') {
-    if (to.meta.guestOnly) {
-      return next('/Customer/Credit')
-    }
-
-    if (to.path === '/') {
-      return next('/Customer/Credit')
-    }
+  // Guest routes
+  if (to.meta.guestOnly) {
+    if (!token) return next()
+    // Authenticated + hitting a guest page: redirect to their first reachable screen
+    return next('/')
   }
 
-  // Guest blocked from protected routes
+  // Protected routes need a token
   if (!token && to.meta.requiresAuth) {
     return next('/LogIn')
   }
 
-  // Logged-in users blocked from guest pages
-  if (token && to.meta.guestOnly) {
-    return next('/')
-  }
+  // Super admin bypasses permission checks
+  if (token && isSuper) return next()
 
-  // Role-based protection
-  if (token && to.meta.roles) {
-    if (!role || !to.meta.roles.includes(role)) {
-      return next(false) 
-    }
+  // Permission check — route name must appear in activeAccount.pivot.route_access
+  if (token) {
+    const account = JSON.parse(localStorage.getItem('activeAccount') || 'null')
+    const list = account?.pivot?.route_access ?? account?.route_access ?? []
+    if (to.name && Array.isArray(list) && list.includes(to.name)) return next()
+    // No permission — stay where we are
+    return next(false)
   }
 
   next()

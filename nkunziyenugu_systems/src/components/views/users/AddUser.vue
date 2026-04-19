@@ -56,23 +56,14 @@
           </div>
 
           <div class="input-group">
-            <select v-model="form.role" required>
-              <option value="" disabled>Select Role</option>
-              <option value="Owner">Owner</option>
-              <option value="Admin">Admin</option>
-              <option value="Viewer">Viewer</option>
-              <option value="FarmWorker">Farm Worker</option>
-              <option value="ShopKeeper">Shop Keeper</option>
-              <option value="Customer">Customer</option>
+            <select v-model="form.preset" required>
+              <option value="" disabled>Select permission preset</option>
+              <option v-for="(_, name) in presets" :key="name" :value="name">{{ name }}</option>
             </select>
           </div>
-
-          <div class="checkbox-group">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="form.can_manage_devices" class="checkbox-input" />
-              <span>Allow this user to configure devices via mobile app (Bluetooth)</span>
-            </label>
-          </div>
+          <p class="preset-hint">
+            The preset sets the initial permissions. You can fine-tune them on the user's edit page afterwards.
+          </p>
 
           <div class="row">
             <div class="col-2" >
@@ -94,8 +85,25 @@
 
 <script>
 import api from "@/store/services/api";
+import registry from "@/permissions-registry.json";
 import { useToast } from "vue-toastification";
 const toast = useToast();
+
+// Preset definitions must mirror nkunziyenugu_api/config/permissions_presets.php
+const ALL_ROUTES  = registry.routes.map(r => r.name);
+const ALL_ACTIONS = registry.actions.map(a => a.name);
+const PRESETS = {
+  Owner:      { routes: ALL_ROUTES, actions: ALL_ACTIONS },
+  Admin:      { routes: ALL_ROUTES, actions: ['view','add','edit','approve','complete','assign'] },
+  FarmWorker: { routes: ['FarmDashboard','FarmList','AnimalList','AnimalEventList','AddAnimal','EditAnimal','AddAnimalEvent','InventoryView'],
+                actions: ['view','add','edit'] },
+  ShopKeeper: { routes: ['ShopDashboard','ShopProducts','ShopPOS','AdminOrders','ShopCashFlow','ShopSalesSummary','AddProduct'],
+                actions: ['view','add','edit','complete'] },
+  Customer:   { routes: ['ShopProducts','ShopCart','ShopMyOrders','CustomerCredit','CustomerCreditRequests'],
+                actions: ['view','add'] },
+  Viewer:     { routes: ['MainDashboard','FarmDashboard','FarmList','AnimalList','AnimalEventList','InventoryView','ShopDashboard','ShopProducts','DevicesList'],
+                actions: ['view'] },
+};
 
 export default {
   name: "AddUser",
@@ -105,14 +113,14 @@ export default {
       loading: false,
       accounts: [],
       selectedAccount: '',
+      presets: PRESETS,
       form: {
         name: "",
         surname: "",
         email: "",
         phone: "",
         password: "",
-        role: "",
-        can_manage_devices: false
+        preset: ""
       }
     };
   },
@@ -143,6 +151,7 @@ export default {
     async addUser() {
       this.loading = true;
       try {
+        const preset = this.presets[this.form.preset] || this.presets.Viewer;
         const payload = {
           name: this.form.name,
           surname: this.form.surname,
@@ -152,8 +161,8 @@ export default {
           accounts: [
             {
               id: this.selectedAccount,
-              role: this.form.role,
-              can_manage_devices: this.form.can_manage_devices
+              route_access:  preset.routes,
+              action_access: preset.actions,
             }
           ]
         };
@@ -166,7 +175,7 @@ export default {
           email: "",
           phone: "",
           password: "",
-          role: ""
+          preset: ""
         };
         this.selectedAccount = null;
 

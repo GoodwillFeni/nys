@@ -43,11 +43,20 @@ class AuthController extends Controller
                 'type' => 'Home',
             ]);
 
-            // 3️⃣ Link user to account as owner
+            // 3️⃣ Link user to account with full Owner permissions (all routes + all actions)
+            $presets  = require base_path('config/permissions_presets.php');
+            $registry = require base_path('config/permissions_registry.php');
+            $allRoutes  = array_map(fn($r) => $r['name'], $registry['routes']);
+            $allActions = array_map(fn($a) => $a['name'], $registry['actions']);
+            $ownerPreset = $presets['Owner'];
+            $routes  = $ownerPreset['routes']  === '*' ? $allRoutes  : $ownerPreset['routes'];
+            $actions = $ownerPreset['actions'] === '*' ? $allActions : $ownerPreset['actions'];
+
             AccountUser::create([
-                'account_id' => $account->id,
-                'user_id'    => $user->id,
-                'role'       => 'Owner',
+                'account_id'    => $account->id,
+                'user_id'       => $user->id,
+                'route_access'  => json_encode($routes),
+                'action_access' => json_encode($actions),
             ]);
 
             DB::commit();
@@ -109,7 +118,12 @@ class AuthController extends Controller
                 'abilities' => ['*'],
                 'expires_at' => now()->addHours(12), // Token expires in 12 hours
             ]);
-            $accounts = $user->accounts()->withPivot('role')->get();
+            $accounts = $user->accounts()->withPivot('route_access', 'action_access')->get()
+                ->map(function ($a) {
+                    $a->pivot->route_access  = json_decode($a->pivot->route_access  ?? '[]', true) ?: [];
+                    $a->pivot->action_access = json_decode($a->pivot->action_access ?? '[]', true) ?: [];
+                    return $a;
+                });
 
             return response()->json([
                 'status' => 'success',
@@ -120,8 +134,8 @@ class AuthController extends Controller
                     'name'    => $user->name,
                     'surname' => $user->surname,
                     'email'   => $user->email,
-                    'is_super_admin' => $user->is_super_admin,
-                    'is_impersonating' => (bool) $user->is_super_admin, // ✅ true if 1, false if 0
+                    'is_super_admin' => (bool) $user->is_super_admin,
+                    'is_impersonating' => session()->has('impersonator_id'),
                 ],
                 'accounts' => $accounts
             ]);

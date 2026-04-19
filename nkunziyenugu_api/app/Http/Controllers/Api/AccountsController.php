@@ -10,29 +10,33 @@ use App\Services\AuditLogService;
 
 class AccountsController extends Controller
 {
+    /**
+     * List the accounts the caller can switch to. Super admins see all,
+     * regular users see only accounts they belong to. Permission checks
+     * are NOT applied here — this is the account picker that runs before
+     * an X-Account-ID is known.
+     */
     public function availableAccounts(Request $request)
     {
         $user = $request->user();
 
-        // Check if the user is super admin
-        if ($user->is_super_admin == 1) {
-            // Return all accounts
+        if ($user->is_super_admin) {
             $allAccounts = Account::where('deleted_flag', 0)
-                                  ->select('id', 'name', 'type', 'created_at', 'updated_at')
-                                  ->get();
+                ->select('id', 'name', 'type', 'created_at', 'updated_at')
+                ->get();
             return response()->json(['accounts' => $allAccounts]);
         }
 
-        // Otherwise, return only linked accounts
-        $linkedAccounts = $user->accounts()->get(); // Load linked accounts via pivot
+        $linkedAccounts = $user->accounts()->get();
         $accounts = $linkedAccounts->map(function ($account) {
             return [
                 'id' => $account->id,
                 'name' => $account->name,
                 'type' => $account->type,
-                'role' => $account->pivot->role,
+                'route_access'  => $account->pivot->route_access  ? (json_decode($account->pivot->route_access,  true) ?: []) : [],
+                'action_access' => $account->pivot->action_access ? (json_decode($account->pivot->action_access, true) ?: []) : [],
                 'created_at' => $account->pivot->created_at,
-                'updated_at' => $account->pivot->updated_at
+                'updated_at' => $account->pivot->updated_at,
             ];
         });
 
@@ -40,7 +44,7 @@ class AccountsController extends Controller
     }
 
     /**
-     * Create a new account
+     * Self-service account creation. The caller becomes Owner (all routes + all actions).
      */
     public function createAccount(Request $request)
     {
@@ -52,73 +56,51 @@ class AccountsController extends Controller
         ]);
 
         DB::beginTransaction();
-
         try {
-            // Create account
             $account = Account::create([
                 'name' => $request->name,
                 'type' => $request->type ?? 'Home',
             ]);
 
-            // Link creator as owner
+            $presets  = require base_path('config/permissions_presets.php');
+            $registry = require base_path('config/permissions_registry.php');
+            $allRoutes  = array_map(fn($r) => $r['name'], $registry['routes']);
+            $allActions = array_map(fn($a) => $a['name'], $registry['actions']);
+            $owner = $presets['Owner'];
+            $routes  = $owner['routes']  === '*' ? $allRoutes  : $owner['routes'];
+            $actions = $owner['actions'] === '*' ? $allActions : $owner['actions'];
+
             AccountUser::create([
-                'account_id' => $account->id,
-                'user_id' => $authUser->id,
-                'role' => 'Owner',
+                'account_id'    => $account->id,
+                'user_id'       => $authUser->id,
+                'route_access'  => $routes,
+                'action_access' => $actions,
             ]);
 
             DB::commit();
-
-            // Log the action
             AuditLogService::logCreate($account, $request, "Created account: {$account->name}");
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Account created successfully',
-                'data' => $account
+                'data' => $account,
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to create account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-    /**
-     * Get account details
-     */
     public function getAccountDetails(Request $request, $id)
     {
-        $authUser = $request->user();
-
-        $account = Account::where('id', $id)
-                          ->where('deleted_flag', 0)
-                          ->first();
-
+        // Permission enforced by middleware: permission:Accounts,view
+        $account = Account::where('id', $id)->where('deleted_flag', 0)->first();
         if (!$account) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Account not found'
-            ], 404);
-        }
-
-        // Check permissions: super admin or user linked to account
-        if (!$authUser->is_super_admin) {
-            $hasAccess = $authUser->accounts()
-                ->where('accounts.id', $id)
-                ->exists();
-
-            if (!$hasAccess) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'You do not have access to this account'
-                ], 403);
-            }
+            return response()->json(['status' => 'error', 'message' => 'Account not found'], 404);
         }
 
         return response()->json([
@@ -128,41 +110,17 @@ class AccountsController extends Controller
                 'name' => $account->name,
                 'type' => $account->type,
                 'created_at' => $account->created_at,
-                'updated_at' => $account->updated_at
-            ]
+                'updated_at' => $account->updated_at,
+            ],
         ]);
     }
 
-    /**
-     * Update account
-     */
     public function updateAccount(Request $request, $id)
     {
-        $authUser = $request->user();
-
-        $account = Account::where('id', $id)
-                          ->where('deleted_flag', 0)
-                          ->first();
-
+        // Permission enforced by middleware: permission:EditAccount,edit
+        $account = Account::where('id', $id)->where('deleted_flag', 0)->first();
         if (!$account) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Account not found'
-            ], 404);
-        }
-
-        // Check permissions: super admin or owner of the account
-        if (!$authUser->is_super_admin) {
-            $userAccount = $authUser->accounts()
-                ->where('accounts.id', $id)
-                ->first();
-
-            if (!$userAccount || strtolower($userAccount->pivot->role) !== 'owner') {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Only account owners can update accounts'
-                ], 403);
-            }
+            return response()->json(['status' => 'error', 'message' => 'Account not found'], 404);
         }
 
         $request->validate([
@@ -171,75 +129,45 @@ class AccountsController extends Controller
         ]);
 
         try {
-            // Store old values for audit log
             $oldValues = $account->getAttributes();
-
             $account->update([
                 'name' => $request->name,
                 'type' => $request->type ?? $account->type,
             ]);
-
-            // Log the action
             AuditLogService::logUpdate($account, $oldValues, $request, "Updated account: {$account->name}");
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Account updated successfully',
-                'data' => $account
+                'data' => $account,
             ]);
-
         } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to update account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-    /**
-     * Delete account (soft delete)
-     */
     public function deleteAccount(Request $request, $id)
     {
-        $authUser = $request->user();
-
-        $account = Account::where('id', $id)
-                          ->where('deleted_flag', 0)
-                          ->first();
-
+        // Permission enforced by middleware: permission:Accounts,delete
+        $account = Account::where('id', $id)->where('deleted_flag', 0)->first();
         if (!$account) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Account not found or already deleted'
-            ], 404);
-        }
-
-        // Only super admins can delete accounts
-        if (!$authUser->is_super_admin) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'You do not have permission to delete accounts'
-            ], 403);
+            return response()->json(['status' => 'error', 'message' => 'Account not found or already deleted'], 404);
         }
 
         try {
-            // Log before deletion
             AuditLogService::logDelete($account, $request, "Deleted account: {$account->name}");
-
             $account->deleted_flag = 1;
             $account->save();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Account deleted successfully'
-            ]);
-
+            return response()->json(['status' => 'success', 'message' => 'Account deleted successfully']);
         } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to delete account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

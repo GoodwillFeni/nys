@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
-import type { User, Account, Role } from '../types';
+import type { User, Account, RouteName, ActionName } from '../types';
 
 const TOKEN_KEY = 'nys_token';
 const USER_KEY = 'nys_user';
@@ -17,8 +17,9 @@ interface AuthState {
   setSession: (token: string, user: User, accounts: Account[]) => Promise<void>;
   setActiveAccount: (id: number) => Promise<void>;
   logout: () => Promise<void>;
-  activeRole: () => Role | undefined;
   activeAccount: () => Account | undefined;
+  canAccessRoute: (route: RouteName) => boolean;
+  canAction: (action: ActionName) => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -72,12 +73,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ token: null, user: null, accounts: [], activeAccountId: null });
   },
 
-  activeRole: () => {
-    const { accounts, activeAccountId } = get();
-    return accounts.find((a) => a.id === activeAccountId)?.role;
-  },
   activeAccount: () => {
     const { accounts, activeAccountId } = get();
     return accounts.find((a) => a.id === activeAccountId);
+  },
+
+  canAccessRoute: (route) => {
+    const { user, accounts, activeAccountId } = get();
+    if (user?.is_super_admin) return true;
+    const acc = accounts.find((a) => a.id === activeAccountId);
+    return !!acc && acc.route_access.includes(route);
+  },
+
+  canAction: (action) => {
+    const { user, accounts, activeAccountId } = get();
+    if (user?.is_super_admin) return true;
+    const acc = accounts.find((a) => a.id === activeAccountId);
+    return !!acc && acc.action_access.includes(action);
   },
 }));

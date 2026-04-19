@@ -55,26 +55,6 @@
             </select>
           </div>
 
-          <div class="input-group">
-            <select v-model="form.role" required>
-              <option value="" disabled>Select Role</option>
-              <!-- <option value="SuperAdmin">SuperAdmin</option> -->
-              <option value="Owner">Owner</option>
-              <option value="Admin">Admin</option>
-              <option value="Viewer">Viewer</option>
-              <option value="FarmWorker">Farm Worker</option>
-              <option value="ShopKeeper">Shop Keeper</option>
-              <option value="Customer">Customer</option>
-            </select>
-          </div>
-
-          <div class="checkbox-group">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="form.can_manage_devices" class="checkbox-input" />
-              <span>Allow this user to configure devices via mobile app (Bluetooth)</span>
-            </label>
-          </div>
-
           <div class="row">
             <div class="col-2">
               <button type="submit" :disabled="loading" class="button-info">
@@ -112,8 +92,8 @@ export default {
         email: "",
         phone: "",
         password: "",
-        role: "",
-        can_manage_devices: false
+        route_access:  [],
+        action_access: [],
       }
     };
   },
@@ -154,8 +134,8 @@ export default {
         if (user.accounts && user.accounts.length > 0) {
           const acc = user.accounts[0];
           this.selectedAccount = acc.id;
-          this.form.role = acc.role ?? acc.pivot?.role;
-          this.form.can_manage_devices = !!(acc.pivot?.can_manage_devices ?? acc.can_manage_devices);
+          this.form.route_access  = Array.isArray(acc.route_access)  ? acc.route_access  : [];
+          this.form.action_access = Array.isArray(acc.action_access) ? acc.action_access : [];
         }
 
       } catch (error) {
@@ -172,12 +152,12 @@ export default {
           surname: this.form.surname,
           email: this.form.email,
           phone: this.form.phone,
-          password: this.form.password, // optional
+          password: this.form.password,
           accounts: [
             {
               id: this.selectedAccount,
-              role: this.form.role,
-              can_manage_devices: this.form.can_manage_devices
+              route_access:  this.form.route_access,
+              action_access: this.form.action_access,
             }
           ]
         };

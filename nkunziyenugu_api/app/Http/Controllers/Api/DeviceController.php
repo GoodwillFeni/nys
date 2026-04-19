@@ -12,10 +12,13 @@ class DeviceController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $activeAccountId = $request->header('X-Account-ID');
         $query = Device::query()->with('account');
+
+        // Data scoping: super admin sees all; regular users see only devices
+        // in the active account (permission already checked by middleware).
         if (!$user->is_super_admin) {
-            $accountIds = $user->accounts()->pluck('accounts.id');
-            $query->whereIn('account_id', $accountIds);
+            $query->where('account_id', (int) $activeAccountId);
         }
         if ($request->filled('name')) {
             $query->where('name', 'like', '%' . $request->name . '%');
@@ -57,14 +60,12 @@ class DeviceController extends Controller
     public function logs(Request $request, Device $device)
     {
         $user = $request->user();
+        $activeAccountId = (int) $request->header('X-Account-ID');
 
-        if (!$user->is_super_admin) {
-            $accountIds = $user->accounts()->pluck('accounts.id');
-            if (!$accountIds->contains($device->account_id)) {
-                return response()->json([
-                    'message' => 'Not allowed to view logs for this device'
-                ], 403);
-            }
+        // Data scoping: the device must belong to the active account (permission
+        // to VIEW logs already checked by middleware).
+        if (!$user->is_super_admin && $device->account_id !== $activeAccountId) {
+            return response()->json(['message' => 'Not allowed to view logs for this device'], 403);
         }
 
         $query = $device->messages();
@@ -143,18 +144,12 @@ class DeviceController extends Controller
             'has_alarm' => 'boolean',
         ]);
 
-        // 🔐 Authorization
-        if (!$user->is_super_admin) {
-            $allowed = $user->accounts()
-                ->where('accounts.id', $request->account_id)
-                ->whereIn('account_users.role', ['Owner', 'Admin', 'owner', 'admin'])
-                ->exists();
-
-            if (!$allowed) {
-                return response()->json([
-                    'message' => 'Not allowed to add device to this account'
-                ], 403);
-            }
+        // Authorization: middleware already confirmed AddDevice + add permission
+        // in the active account. Still enforce that the supplied account_id
+        // matches the active account (can't add a device to a different account).
+        $activeAccountId = (int) $request->header('X-Account-ID');
+        if (!$user->is_super_admin && (int) $request->account_id !== $activeAccountId) {
+            return response()->json(['message' => 'account_id must match active account'], 403);
         }
 
         $plainSecret = $request->device_key;

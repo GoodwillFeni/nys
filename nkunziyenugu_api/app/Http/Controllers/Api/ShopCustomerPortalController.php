@@ -10,18 +10,15 @@ use Illuminate\Http\Request;
 
 class ShopCustomerPortalController extends ShopBaseController
 {
+    /**
+     * Legacy gate — used to require the 'Customer' role. Now replaced by the
+     * route-level permission middleware (permission:CustomerCredit,view etc.).
+     * Kept as a no-op so existing call sites remain harmless; delete on the
+     * next cleanup pass.
+     */
     protected function requireCustomerRole(Request $request, int $accountId): void
     {
-        $account = $request->user()
-            ?->accounts()
-            ->where('accounts.id', $accountId)
-            ->first();
-
-        $role = $account?->pivot?->role;
-
-        if (strtolower((string) $role) !== 'customer') {
-            abort(response()->json(['status' => 'error', 'message' => 'Not allowed'], 403));
-        }
+        // permission middleware already gates these routes
     }
 
     protected function getCustomer(Request $request, int $accountId): ShopCustomer

@@ -91,11 +91,20 @@ class ShopCustomerController extends ShopBaseController
                 'password_hash' => Hash::make($request->password),
             ]);
 
+            $presets  = require base_path('config/permissions_presets.php');
+            $registry = require base_path('config/permissions_registry.php');
+            $allRoutes  = array_map(fn($r) => $r['name'], $registry['routes']);
+            $allActions = array_map(fn($a) => $a['name'], $registry['actions']);
+            $customerPreset = $presets['Customer'];
+            $routes  = $customerPreset['routes']  === '*' ? $allRoutes  : $customerPreset['routes'];
+            $actions = $customerPreset['actions'] === '*' ? $allActions : $customerPreset['actions'];
+
             AccountUser::create([
-                'account_id' => $accountId,
-                'user_id' => $user->id,
-                'role' => 'Customer',
-                'deleted_flag' => 0,
+                'account_id'    => $accountId,
+                'user_id'       => $user->id,
+                'route_access'  => $routes,
+                'action_access' => $actions,
+                'deleted_flag'  => 0,
             ]);
 
             $customer = ShopCustomer::create([

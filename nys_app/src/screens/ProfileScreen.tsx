@@ -7,7 +7,6 @@ export function ProfileScreen() {
   const { colors } = useTheme();
   const user = useAuthStore((s) => s.user);
   const account = useAuthStore((s) => s.activeAccount());
-  const role = useAuthStore((s) => s.activeRole());
 
   return (
     <ScrollView contentContainerStyle={[styles.c, { backgroundColor: colors.bg }]}>
@@ -27,14 +26,6 @@ export function ProfileScreen() {
 
         <Label color={colors.textMuted}>Active account</Label>
         <Value color={colors.text}>{account?.name ?? '\u2014'}</Value>
-
-        <Label color={colors.textMuted}>Role</Label>
-        <Value color={colors.text}>{role ?? '\u2014'}</Value>
-
-        <Label color={colors.textMuted}>Device configuration</Label>
-        <Value color={colors.text}>
-          {account?.can_manage_devices || role === 'Owner' || role === 'Super_Admin' ? 'Allowed' : 'Not allowed'}
-        </Value>
       </View>
     </ScrollView>
   );

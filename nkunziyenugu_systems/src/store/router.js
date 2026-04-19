@@ -25,7 +25,14 @@ const routes = [
         name: 'EditUser',
         component: () => import('../components/views/users/EditUser.vue'),
         props: true,
-        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/EditPermissions/:userId/:accountId',
+        name: 'EditPermissions',
+        component: () => import('../components/views/users/EditPermissions.vue'),
+        props: true,
+        meta: { requiresAuth: true }
     },
     {
         path: '/AccountList',

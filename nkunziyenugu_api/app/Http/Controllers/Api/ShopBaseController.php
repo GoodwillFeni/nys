@@ -14,23 +14,22 @@ class ShopBaseController extends Controller
         if (!$accountId) {
             abort(response()->json([
                 'status' => 'error',
-                'message' => 'Active account not selected'
+                'message' => 'Active account not selected',
             ], 400));
         }
 
         return $accountId;
     }
 
+    /**
+     * Does the user belong to (or can access) this account at all?
+     * Super admins always do.
+     */
     protected function userHasAccountAccess(Request $request, int $accountId): bool
     {
         $user = $request->user();
-        if (!$user) {
-            return false;
-        }
-
-        if ((int) ($user->is_super_admin ?? 0) === 1) {
-            return true;
-        }
+        if (!$user) return false;
+        if ($user->is_super_admin) return true;
 
         return $user->accounts()
             ->where('accounts.id', $accountId)
@@ -42,25 +41,27 @@ class ShopBaseController extends Controller
         if (!$this->userHasAccountAccess($request, $accountId)) {
             abort(response()->json([
                 'status' => 'error',
-                'message' => 'You do not have access to this account'
+                'message' => 'You do not have access to this account',
             ], 403));
         }
     }
 
+    /**
+     * Legacy helper — used to mean "Owner/Admin/SuperAdmin role on this account".
+     * Kept as a compatibility shim after the permissions refactor so existing
+     * controller code continues to work. New semantics: the user has at least
+     * one write-type action (add/edit/delete/approve/complete) in this account.
+     * Super admins always qualify.
+     */
     protected function hasPrivilegedRole(Request $request, int $accountId): bool
     {
         $user = $request->user();
-        if (!$user) {
-            return false;
-        }
+        if (!$user) return false;
+        if ($user->is_super_admin) return true;
 
-        if ((int) ($user->is_super_admin ?? 0) === 1) {
-            return true;
+        foreach (['approve', 'complete', 'delete', 'edit', 'add'] as $action) {
+            if ($user->hasAction($action, $accountId)) return true;
         }
-
-        return $user->accounts()
-            ->where('accounts.id', $accountId)
-            ->whereIn('account_users.role', ['Owner', 'Admin', 'owner', 'admin', 'SuperAdmin', 'Super_Admin', 'super_admin'])
-            ->exists();
+        return false;
     }
 }

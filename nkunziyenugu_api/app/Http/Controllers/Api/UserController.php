@@ -7,34 +7,61 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
-use App\Models\Account;
 use App\Services\AuditLogService;
 
 class UserController extends Controller
 {
     /**
-     * Add a new user and link to accounts
+     * Validation rules for a per-account permission assignment.
+     * route_access + action_access are validated against the registry
+     * so nobody can grant a made-up permission.
+     */
+    protected function permissionValidationRules(): array
+    {
+        $registry = require base_path('config/permissions_registry.php');
+        $routeNames  = array_map(fn($r) => $r['name'], $registry['routes']);
+        $actionNames = array_map(fn($a) => $a['name'], $registry['actions']);
+
+        return [
+            'accounts' => 'required|array|min:1',
+            'accounts.*.id' => 'required|exists:accounts,id',
+            'accounts.*.route_access'    => 'nullable|array',
+            'accounts.*.route_access.*'  => 'string|in:' . implode(',', $routeNames),
+            'accounts.*.action_access'   => 'nullable|array',
+            'accounts.*.action_access.*' => 'string|in:' . implode(',', $actionNames),
+        ];
+    }
+
+    /**
+     * Ensure caller is allowed to assign a given account to a user.
+     * Super admins can assign any account; others only accounts they themselves have access to.
+     */
+    protected function assertCallerCanAssignAccount($authUser, int $accountId): void
+    {
+        if ($authUser->is_super_admin) return;
+        $allowed = $authUser->accounts()->where('accounts.id', $accountId)->exists();
+        if (!$allowed) {
+            throw new \RuntimeException("Not allowed to assign account ID {$accountId}");
+        }
+    }
+
+    /**
+     * Add a new user and link to accounts with permissions.
      */
     public function addUser(Request $request)
     {
         $authUser = $request->user();
 
-        $request->validate([
-            'name' => 'required|string|max:150',
-            'surname' => 'required|string|max:150',
-            'email' => 'required|email|unique:users,email',
-            'phone' => 'nullable|string|max:50',
+        $request->validate(array_merge([
+            'name'     => 'required|string|max:150',
+            'surname'  => 'required|string|max:150',
+            'email'    => 'required|email|unique:users,email',
+            'phone'    => 'nullable|string|max:50',
             'password' => 'required|min:6',
-            'accounts' => 'required|array|min:1',
-            'accounts.*.id' => 'required|exists:accounts,id',
-            'accounts.*.role' => 'required|in:Owner,Admin,Viewer,FarmWorker,ShopKeeper,Customer,Super_Admin',
-            'accounts.*.can_manage_devices' => 'nullable|boolean',
-        ]);
+        ], $this->permissionValidationRules()));
 
         DB::beginTransaction();
-
         try {
-            // 1️⃣ Create user
             $user = User::create([
                 'name'          => $request->name,
                 'surname'       => $request->surname,
@@ -43,55 +70,39 @@ class UserController extends Controller
                 'password_hash' => Hash::make($request->password),
             ]);
 
-            // 2️⃣ Attach accounts
             foreach ($request->accounts as $acc) {
-                if (!$authUser->is_super_admin) {
-                    $allowed = $authUser->accounts()
-                        ->where('accounts.id', $acc['id'])
-                        ->exists();
-
-                    if (!$allowed) {
-                        throw new \Exception('Not allowed to assign this account');
-                    }
-                }
-
+                $this->assertCallerCanAssignAccount($authUser, (int) $acc['id']);
                 $user->accounts()->attach($acc['id'], [
-                    'role' => $acc['role'],
-                    'can_manage_devices' => !empty($acc['can_manage_devices']),
+                    'route_access'  => json_encode($acc['route_access']  ?? []),
+                    'action_access' => json_encode($acc['action_access'] ?? []),
                 ]);
             }
 
             DB::commit();
-
-            // Log the action
             AuditLogService::logCreate($user, $request, "Created user: {$user->name} {$user->surname}");
 
             return response()->json([
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => 'User created and linked successfully',
-                'user_id' => $user->id
+                'user_id' => $user->id,
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ], 403);
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 403);
         }
     }
 
+    /**
+     * List users scoped to the active account (or all users for super admin).
+     * Permission enforced by middleware: permission:UserList,view
+     */
     public function getUsers(Request $request)
     {
         $authUser = $request->user();
         $activeAccountId = $request->header('X-Account-ID');
 
-        if (!$this->isSuperAdmin($authUser) && !$activeAccountId) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Active account not selected'
-            ], 400);
+        if (!$authUser->is_super_admin && !$activeAccountId) {
+            return response()->json(['status' => 'error', 'message' => 'Active account not selected'], 400);
         }
 
         $query = DB::table('users as u')
@@ -100,8 +111,7 @@ class UserController extends Controller
             ->where('u.deleted_flag', 0)
             ->where('au.deleted_flag', 0);
 
-        // Limit for normal users
-        if (!$this->isSuperAdmin($authUser)) {
+        if (!$authUser->is_super_admin) {
             $query->where('a.id', $activeAccountId);
         }
 
@@ -116,190 +126,138 @@ class UserController extends Controller
             'a.id as account_id',
             'a.name as account_name',
             'a.type as account_type',
-            'au.role as account_role'
+            'au.route_access',
+            'au.action_access'
         )
         ->orderBy('u.name')
-        ->get();
+        ->get()
+        ->map(function ($row) {
+            $row->route_access  = json_decode($row->route_access  ?? '[]', true) ?: [];
+            $row->action_access = json_decode($row->action_access ?? '[]', true) ?: [];
+            return $row;
+        });
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $users
-        ]);
+        return response()->json(['status' => 'success', 'data' => $users]);
     }
 
-    /**
-     * Check if user is SuperAdmin
-     */
-    private function isSuperAdmin($user): bool
-    {
-        return (bool) $user->is_super_admin;
-    }
-
-    /**
-     * Check if impersonating
-     */
     public function isImpersonating()
     {
         return session()->has('impersonator_id');
     }
-/**
- * Get a user's details including accounts and roles
- */
-public function getUserDetails(Request $request, $id)
-{
-    $authUser = $request->user();
 
-    $user = User::with(['accounts' => function($q) use ($authUser) {
-        if (!$authUser->is_super_admin) {
-            // Normal users can only see accounts they themselves have
-            $q->whereIn('accounts.id', $authUser->accounts->pluck('id'));
-        }
-        $q->select('accounts.id', 'accounts.name', 'accounts.type');
-    }])->where('id', $id)
-      ->where('deleted_flag', 0)
-      ->first();
+    /**
+     * Get a single user with accounts + permissions.
+     * Permission enforced by middleware: permission:EditUser,view
+     */
+    public function getUserDetails(Request $request, $id)
+    {
+        $authUser = $request->user();
 
-    if (!$user) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'User not found'
-        ], 404);
-    }
-
-    // Add pivot role + flags to each account
-    $user->accounts->each(function($account) {
-        $account->role = $account->pivot->role;
-        $account->can_manage_devices = (bool) ($account->pivot->can_manage_devices ?? false);
-    });
-
-    return response()->json([
-        'status' => 'success',
-        'data' => [
-            'id' => $user->id,
-            'name' => $user->name,
-            'surname' => $user->surname,
-            'email' => $user->email,
-            'phone' => $user->phone,
-            'accounts' => $user->accounts
-        ]
-    ]);
-}
-
-/**
- * Update user details and accounts
- */
-public function updateUser(Request $request, $id)
-{
-    $authUser = $request->user();
-
-    $user = User::where('id', $id)->where('deleted_flag', 0)->first();
-    if (!$user) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'User not found'
-        ], 404);
-    }
-
-    $request->validate([
-        'name' => 'required|string|max:150',
-        'surname' => 'required|string|max:150',
-        'email' => 'required|email|unique:users,email,' . $id,
-        'phone' => 'nullable|string|max:50',
-        'password' => 'nullable|min:6',
-        'accounts' => 'required|array|min:1',
-        'accounts.*.id' => 'required|exists:accounts,id',
-        'accounts.*.role' => 'required|in:Owner,Admin,Viewer,FarmWorker,ShopKeeper,Customer,Super_Admin',
-        'accounts.*.can_manage_devices' => 'nullable|boolean',
-    ]);
-
-    DB::beginTransaction();
-    try {
-        // Store old values for audit log
-        $oldValues = $user->getAttributes();
-
-        // Update basic info
-        $user->update([
-            'name' => $request->name,
-            'surname' => $request->surname,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password_hash' => $request->password ? Hash::make($request->password) : $user->password_hash,
-        ]);
-
-        // Sync accounts
-        $syncData = [];
-        foreach ($request->accounts as $acc) {
+        $user = User::with(['accounts' => function ($q) use ($authUser) {
             if (!$authUser->is_super_admin) {
-                $allowed = $authUser->accounts()->where('accounts.id', $acc['id'])->exists();
-                if (!$allowed) {
-                    throw new \Exception("Not allowed to assign account ID {$acc['id']}");
-                }
+                $q->whereIn('accounts.id', $authUser->accounts->pluck('id'));
             }
-            $syncData[$acc['id']] = [
-                'role' => $acc['role'],
-                'can_manage_devices' => !empty($acc['can_manage_devices']),
-            ];
+            $q->select('accounts.id', 'accounts.name', 'accounts.type');
+        }])->where('id', $id)->where('deleted_flag', 0)->first();
+
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
         }
 
-        $user->accounts()->sync($syncData);
-
-        DB::commit();
-
-        // Log the action
-        AuditLogService::logUpdate($user, $oldValues, $request, "Updated user: {$user->name} {$user->surname}");
+        $user->accounts->each(function ($account) {
+            $account->route_access  = $account->pivot->route_access  ? (json_decode($account->pivot->route_access,  true) ?: []) : [];
+            $account->action_access = $account->pivot->action_access ? (json_decode($account->pivot->action_access, true) ?: []) : [];
+        });
 
         return response()->json([
             'status' => 'success',
-            'message' => 'User updated successfully'
+            'data' => [
+                'id'       => $user->id,
+                'name'     => $user->name,
+                'surname'  => $user->surname,
+                'email'    => $user->email,
+                'phone'    => $user->phone,
+                'accounts' => $user->accounts,
+            ],
         ]);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return response()->json([
-            'status' => 'error',
-            'message' => $e->getMessage()
-        ], 403);
-    }
-}
-// Delete user (soft delete)
-public function deleteUser(Request $request, $id)
-{
-    $authUser = $request->user();
-
-    // Only super admins can delete users
-    if (!$authUser->is_super_admin) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'You do not have permission to delete users.'
-        ], 403);
     }
 
-    $user = User::find($id);
+    /**
+     * Update user and sync account permissions.
+     * Permission enforced by middleware: permission:EditUser,edit
+     */
+    public function updateUser(Request $request, $id)
+    {
+        $authUser = $request->user();
 
-    if (!$user || $user->deleted_flag) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'User not found or already deleted.'
-        ], 404);
+        $user = User::where('id', $id)->where('deleted_flag', 0)->first();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
+        }
+
+        $request->validate(array_merge([
+            'name'     => 'required|string|max:150',
+            'surname'  => 'required|string|max:150',
+            'email'    => 'required|email|unique:users,email,' . $id,
+            'phone'    => 'nullable|string|max:50',
+            'password' => 'nullable|min:6',
+        ], $this->permissionValidationRules()));
+
+        DB::beginTransaction();
+        try {
+            $oldValues = $user->getAttributes();
+
+            $user->update([
+                'name'          => $request->name,
+                'surname'       => $request->surname,
+                'email'         => $request->email,
+                'phone'         => $request->phone,
+                'password_hash' => $request->password ? Hash::make($request->password) : $user->password_hash,
+            ]);
+
+            $syncData = [];
+            foreach ($request->accounts as $acc) {
+                $this->assertCallerCanAssignAccount($authUser, (int) $acc['id']);
+                $syncData[$acc['id']] = [
+                    'route_access'  => json_encode($acc['route_access']  ?? []),
+                    'action_access' => json_encode($acc['action_access'] ?? []),
+                ];
+            }
+
+            $user->accounts()->sync($syncData);
+
+            DB::commit();
+            AuditLogService::logUpdate($user, $oldValues, $request, "Updated user: {$user->name} {$user->surname}");
+
+            return response()->json(['status' => 'success', 'message' => 'User updated successfully']);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 403);
+        }
     }
 
-    try {
-        // Log before deletion
-        AuditLogService::logDelete($user, $request, "Deleted user: {$user->name} {$user->surname}");
+    /**
+     * Soft-delete user.
+     * Permission enforced by middleware: permission:UserList,delete
+     */
+    public function deleteUser(Request $request, $id)
+    {
+        $user = User::find($id);
 
-        $user->deleted_flag = 1;
-        $user->save();
+        if (!$user || $user->deleted_flag) {
+            return response()->json(['status' => 'error', 'message' => 'User not found or already deleted.'], 404);
+        }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'User deleted successfully.'
-        ]);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to delete user: ' . $e->getMessage()
-        ], 500);
+        try {
+            AuditLogService::logDelete($user, $request, "Deleted user: {$user->name} {$user->surname}");
+            $user->deleted_flag = 1;
+            $user->save();
+            return response()->json(['status' => 'success', 'message' => 'User deleted successfully.']);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete user: ' . $e->getMessage(),
+            ], 500);
+        }
     }
-}
-
 }

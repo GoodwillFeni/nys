@@ -4,13 +4,13 @@
 
     <AccountSelector v-if="isAuthenticated" />
     <nav>
-      <RouterLink to="/" v-if="isAuthenticated && !isCustomer"><i class="bi bi-house"></i>Main Dashboard</RouterLink>
-      <RouterLink v-if="isAuthenticated && !isCustomer" to="/DeviceList"><i class="bi bi-laptop"></i>Devices</RouterLink>
-      <RouterLink v-if="isAuthenticated && !isCustomer" to="/AccountList"><i class="bi bi-bank"></i>Accounts</RouterLink>
-      <RouterLink v-if="isAuthenticated && !isCustomer" to="/UserList"><i class="bi bi-people"></i>Users</RouterLink>
+      <RouterLink to="/" v-if="canRoute('MainDashboard')"><i class="bi bi-house"></i>Main Dashboard</RouterLink>
+      <RouterLink v-if="canRoute('DevicesList')" to="/DeviceList"><i class="bi bi-laptop"></i>Devices</RouterLink>
+      <RouterLink v-if="canRoute('Accounts')" to="/AccountList"><i class="bi bi-bank"></i>Accounts</RouterLink>
+      <RouterLink v-if="canRoute('UserList')" to="/UserList"><i class="bi bi-people"></i>Users</RouterLink>
 
-      <!-- Shop navigations  -->
-      <div v-if="isAuthenticated && !isCustomer" class="nav-group">
+      <!-- Shop -->
+      <div v-if="anyShopRoute" class="nav-group">
         <button
           type="button"
           class="nav-group__toggle"
@@ -21,41 +21,39 @@
           Shop
         </button>
         <div v-show="shopOpen" class="nav-group__items">
-          <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/Shop/Dashboard"><i class="bi bi-speedometer2"></i>Dashboard</RouterLink>
-          <RouterLink v-if="isAuthenticated || isSuperAdmin || isOwner || isAdmin" to="/Shop/Products" ><i class="bi bi-boxes"></i>Products</RouterLink>
-          <!-- <RouterLink v-if="isAuthenticated" to="/Shop/Cart">Cart</RouterLink> -->
-          <RouterLink v-if="isAuthenticated" to="/Shop/MyOrders"><i class="bi bi-cart"></i>My Orders</RouterLink>
-          <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/Orders"><i class="bi bi-bag-check"></i>Orders</RouterLink>
-          <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/POS"><i class="bi bi-signpost"></i>POS</RouterLink>
-          <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/SalesSummary"><i class="bi bi-bar-chart"></i>Sales Summary</RouterLink>
-          <RouterLink v-if="isSuperAdmin || isOwner || isAdmin" to="/Shop/CashFlow"><i class="bi bi-cash"></i>Cash Flow</RouterLink>
+          <RouterLink v-if="canRoute('ShopDashboard')" to="/Shop/Dashboard"><i class="bi bi-speedometer2"></i>Dashboard</RouterLink>
+          <RouterLink v-if="canRoute('ShopProducts')" to="/Shop/Products"><i class="bi bi-boxes"></i>Products</RouterLink>
+          <RouterLink v-if="canRoute('ShopMyOrders')" to="/Shop/MyOrders"><i class="bi bi-cart"></i>My Orders</RouterLink>
+          <RouterLink v-if="canRoute('AdminOrders')" to="/Shop/Orders"><i class="bi bi-bag-check"></i>Orders</RouterLink>
+          <RouterLink v-if="canRoute('ShopPOS')" to="/Shop/POS"><i class="bi bi-signpost"></i>POS</RouterLink>
+          <RouterLink v-if="canRoute('ShopSalesSummary')" to="/Shop/SalesSummary"><i class="bi bi-bar-chart"></i>Sales Summary</RouterLink>
+          <RouterLink v-if="canRoute('ShopCashFlow')" to="/Shop/CashFlow"><i class="bi bi-cash"></i>Cash Flow</RouterLink>
+          <RouterLink v-if="canRoute('CustomerCredit')" to="/Customer/Credit"><i class="bi bi-wallet2"></i>My Credit</RouterLink>
+          <RouterLink v-if="canRoute('CustomerCreditRequests')" to="/Customer/CreditRequests"><i class="bi bi-receipt"></i>Credit Requests</RouterLink>
         </div>
       </div>
-       <!-- End shop navigations -->
 
-        <!-- Farm navigations -->
-        <div v-if="isAuthenticated && !isCustomer" class="nav-group">
-          <button
-            type="button"
-            class="nav-group__toggle"
-            :class="{ 'nav-group__toggle--active': isFarmRoute }"
-            @click="toggleFarm">
-            <i class="bi bi-tree"></i>
-            Farm
-          </button>
+      <!-- Farm -->
+      <div v-if="anyFarmRoute" class="nav-group">
+        <button
+          type="button"
+          class="nav-group__toggle"
+          :class="{ 'nav-group__toggle--active': isFarmRoute }"
+          @click="toggleFarm">
+          <i class="bi bi-tree"></i>
+          Farm
+        </button>
 
-          <div v-show="farmOpen" class="nav-group__items">
-            <RouterLink v-if="isAuthenticated" to="/Farm/FarmDashboard"><i class="bi bi-speedometer2"></i>Farm Dashboard</RouterLink>
-            <RouterLink v-if="isAuthenticated" to="/Farm/Farms"><i class="bi bi-house-door"></i>Farms</RouterLink>
-            <RouterLink v-if="isAuthenticated" to="/Farm/AnimalList"><i class="bi bi-github"></i>Animals</RouterLink>
-            <RouterLink v-if="isAuthenticated" to="/Farm/InventoryView"><i class="bi bi-box-seam"></i>Inventory</RouterLink>
-            <RouterLink v-if="isAuthenticated" to="/Farm/PnlReport"><i class="bi bi-clipboard-data"></i>Reports</RouterLink>
-          </div>
+        <div v-show="farmOpen" class="nav-group__items">
+          <RouterLink v-if="canRoute('FarmDashboard')" to="/Farm/FarmDashboard"><i class="bi bi-speedometer2"></i>Farm Dashboard</RouterLink>
+          <RouterLink v-if="canRoute('FarmList')" to="/Farm/Farms"><i class="bi bi-house-door"></i>Farms</RouterLink>
+          <RouterLink v-if="canRoute('AnimalList')" to="/Farm/AnimalList"><i class="bi bi-github"></i>Animals</RouterLink>
+          <RouterLink v-if="canRoute('InventoryView')" to="/Farm/InventoryView"><i class="bi bi-box-seam"></i>Inventory</RouterLink>
+          <RouterLink v-if="canRoute('PnlReport')" to="/Farm/PnlReport"><i class="bi bi-clipboard-data"></i>Reports</RouterLink>
         </div>
-        <!-- End Farm navigations -->
-      <RouterLink v-if="isAuthenticated && !isCustomer" to="/AuditLogs" ><i class="bi bi-book"></i>Audit Logs</RouterLink>
-      <RouterLink v-if="isAuthenticated && isCustomer" to="/Customer/Credit"><i class="bi bi-cart"></i>My Credit</RouterLink>
-      <RouterLink v-if="isAuthenticated && isCustomer" to="/Customer/CreditRequests"><i class="bi bi-cart"></i>Credit Requests</RouterLink>
+      </div>
+
+      <RouterLink v-if="canRoute('AuditLogs')" to="/AuditLogs"><i class="bi bi-book"></i>Audit Logs</RouterLink>
       <LogOut />
     </nav>
   </aside>
@@ -93,47 +91,46 @@ export default {
     isAuthenticated() {
       return this.$store.getters.isAuthenticated
     },
-    isSuperAdmin() {
-      return this.$store.getters.isSuperAdmin
-    },
-    isOwner() {
-      return this.$store.getters.isOwner
-    },
-    isAdmin() {
-      return this.$store.getters.isAdmin
-    },
-    isViewer() {
-      return this.$store.getters.isViewer
-    },
-    isCustomer() {
-      return this.$store.getters.isCustomer
-    },
     cartCount() {
       return this.$store.getters['cartCount'] || 0
+    },
+    anyShopRoute() {
+      return [
+        'ShopDashboard','ShopProducts','ShopMyOrders','AdminOrders',
+        'ShopPOS','ShopSalesSummary','ShopCashFlow',
+        'CustomerCredit','CustomerCreditRequests',
+      ].some(n => this.canRoute(n))
+    },
+    anyFarmRoute() {
+      return [
+        'FarmDashboard','FarmList','AnimalList','InventoryView','PnlReport',
+      ].some(n => this.canRoute(n))
     }
   },
 
-watch: {
-  '$route.path'(newPath) {
-    if (!(newPath || '').startsWith('/Shop')) this.shopOpen = false
-    if (!(newPath || '').startsWith('/Farm')) this.farmOpen = false
-  }
-},
-
   methods: {
+    canRoute(name) {
+      return this.$store.getters.canRoute(name)
+    },
+    canAction(name) {
+      return this.$store.getters.canAction(name)
+    },
     toggleShop() {
       const willOpen = !this.shopOpen
-      if (willOpen && !this.isShopRoute) {
-        this.$router.push('/Shop/Products')
-      }
+      if (willOpen && !this.isShopRoute) this.$router.push('/Shop/Products')
       this.shopOpen = willOpen
     },
     toggleFarm() {
       const willOpen = !this.farmOpen
-      if (willOpen && !this.isFarmRoute) {
-        this.$router.push('/Farm/FarmDashboard')
-      }
+      if (willOpen && !this.isFarmRoute) this.$router.push('/Farm/FarmDashboard')
       this.farmOpen = willOpen
+    }
+  },
+
+  watch: {
+    '$route.path'(newPath) {
+      if (!(newPath || '').startsWith('/Shop')) this.shopOpen = false
+      if (!(newPath || '').startsWith('/Farm')) this.farmOpen = false
     }
   }
 }

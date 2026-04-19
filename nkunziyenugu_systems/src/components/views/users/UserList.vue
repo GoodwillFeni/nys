@@ -16,7 +16,7 @@
           <th>Email</th>
           <th>Phone</th>
           <th>Account</th>
-          <th>Role</th>
+          <th>Access</th>
           <th>Created At</th>
           <th>Updated At</th>
           <th>Action</th>
@@ -31,21 +31,27 @@
           <td>{{ user.email }}</td>
           <td>{{ user.phone }}</td>
           <td>{{ user.account_name }}</td>
-          <td>{{ user.account_role }}</td>
+          <td>
+            {{ (user.route_access?.length ?? 0) }} screens ·
+            {{ (user.action_access?.length ?? 0) }} actions
+          </td>
           <td>{{ formatDate(user.user_created_at) }}</td>
           <td>{{ formatDate(user.user_updated_at) }}</td>
-          <td>
-            <button @click="editUser(user)" class="button-info">
+          <td class="action-cell">
+            <button @click="editUser(user)" class="button-info" title="Edit user">
               <i class="bi bi-pencil-square"></i>
             </button>
-            <button @click="deleteUser(user)" class="button-danger">
+            <button @click="editPermissions(user)" class="button-primary" title="Edit permissions">
+              <i class="bi bi-shield-lock"></i>
+            </button>
+            <button @click="deleteUser(user)" class="button-danger" title="Delete user">
               <i class="bi bi-trash"></i>
             </button>
           </td>
         </tr>
 
         <tr v-if="users.length === 0">
-          <td colspan="9" class="text-center py-4">
+          <td colspan="10" class="text-center py-4">
             No users found.
           </td>
         </tr>
@@ -117,6 +123,12 @@ export default {
       })
     },
 
+    editPermissions(user) {
+      this.$router.push({
+        path: `/EditPermissions/${user.user_id}/${user.account_id}`,
+      })
+    },
+
     async getUsers() {
       try {
         // X-Account-ID is now automatically sent by API interceptor
@@ -163,5 +175,9 @@ td {
   padding: 10px;
   border-bottom: 1px solid #fff;
   text-align: left;
+}
+
+.action-cell {
+  white-space: nowrap;
 }
 </style>

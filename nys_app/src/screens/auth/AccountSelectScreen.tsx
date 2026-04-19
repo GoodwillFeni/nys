@@ -11,9 +11,7 @@ export function AccountSelectScreen() {
     <Pressable style={styles.row} onPress={() => setActiveAccount(item.id)}>
       <View>
         <Text style={styles.name}>{item.name}</Text>
-        <Text style={styles.meta}>
-          {item.role}{item.type ? ` · ${item.type}` : ''}
-        </Text>
+        {item.type ? <Text style={styles.meta}>{item.type}</Text> : null}
       </View>
     </Pressable>
   );

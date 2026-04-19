@@ -1,12 +1,17 @@
-
+// Permission-aware auth module.
+// - `role` / `isOwner` / `isAdmin` etc. are GONE. Replaced by:
+//     canRoute(name)   — true if the active account grants that route
+//     canAction(name)  — true if the active account grants that action
+//     isSuperAdmin     — kept (reads the user's global flag)
+// - Permissions come from login response: accounts[].pivot.route_access + action_access
 
 export default {
-    state: {
-    user: JSON.parse(localStorage.getItem('user')),
+  state: {
+    user: JSON.parse(localStorage.getItem('user') || 'null'),
     token: localStorage.getItem('token'),
-    accounts: JSON.parse(localStorage.getItem('accounts')),
-    activeAccount: JSON.parse(localStorage.getItem('activeAccount')),
-    expires_at: JSON.parse(localStorage.getItem('expires_at')),
+    accounts: JSON.parse(localStorage.getItem('accounts') || 'null'),
+    activeAccount: JSON.parse(localStorage.getItem('activeAccount') || 'null'),
+    expires_at: JSON.parse(localStorage.getItem('expires_at') || 'null'),
     cartCount: (() => {
       try {
         const cart = JSON.parse(localStorage.getItem('shop_cart') || '{"items":[]}')
@@ -39,11 +44,11 @@ export default {
       state.cartCount = count
     },
 
-    LOGOUT(state) { // Clear all authentication data
+    LOGOUT(state) {
       state.user = null
       state.token = null
       state.accounts = null
-      state.activeAccount = null,
+      state.activeAccount = null
       state.expires_at = null
 
       localStorage.removeItem('user')
@@ -80,15 +85,35 @@ export default {
 
   getters: {
     isAuthenticated: state => !!state.token,
+    isSuperAdmin: state => !!state.user?.is_super_admin,
+    cartCount: state => state.cartCount,
 
-    role: state => (state.activeAccount?.pivot?.role || null),
-    normalizedRole: (state, getters) => (getters.role ? String(getters.role).toLowerCase() : null),
+    /** Permission: can the user navigate to a given named route in the active account? */
+    canRoute: (state, getters) => (routeName) => {
+      if (!state.token) return false
+      if (getters.isSuperAdmin) return true
+      const list = state.activeAccount?.pivot?.route_access ?? state.activeAccount?.route_access ?? []
+      return Array.isArray(list) && list.includes(routeName)
+    },
 
-    isSuperAdmin: (state, getters) => getters.normalizedRole === 'superadmin' || getters.normalizedRole === 'super_admin',
-    isOwner: (state, getters) => getters.normalizedRole === 'owner',
-    isAdmin: (state, getters) => getters.normalizedRole === 'admin',
-    isViewer: (state, getters) => getters.normalizedRole === 'viewer',
-    isCustomer: (state, getters) => getters.normalizedRole === 'customer',
-    cartCount: state => state.cartCount
+    /** Permission: can the user perform a given action in the active account? */
+    canAction: (state, getters) => (actionName) => {
+      if (!state.token) return false
+      if (getters.isSuperAdmin) return true
+      const list = state.activeAccount?.pivot?.action_access ?? state.activeAccount?.action_access ?? []
+      return Array.isArray(list) && list.includes(actionName)
+    },
+
+    /**
+     * Legacy compatibility: "is the user privileged to do admin-type things?"
+     * True if they have any write-class action. Used by shop components that
+     * still have an isPrivileged computed; keeps the old UX working.
+     */
+    isPrivileged: (state, getters) => {
+      if (!state.token) return false
+      if (getters.isSuperAdmin) return true
+      const list = state.activeAccount?.pivot?.action_access ?? state.activeAccount?.action_access ?? []
+      return Array.isArray(list) && ['add','edit','delete','approve','complete'].some(a => list.includes(a))
+    }
   }
 }

@@ -50,8 +50,11 @@ function BLEStackNavigator() {
 
 function MainDrawer() {
   const { colors } = useTheme();
-  const role = useAuthStore((s) => s.activeRole());
   const account = useAuthStore((s) => s.activeAccount());
+  const isSuper = useAuthStore((s) => !!s.user?.is_super_admin);
+
+  // Super admins bypass all permission checks (mirror backend behavior)
+  const bypass = isSuper;
 
   return (
     <Drawer.Navigator
@@ -64,7 +67,7 @@ function MainDrawer() {
         headerLeft: () => <HamburgerHeader tintColor={colors.headerText} />,
       }}
     >
-      {canFarm(role) && (
+      {(bypass || canFarm(account)) && (
         <Drawer.Screen
           name="Farm"
           component={FarmStack}
@@ -72,7 +75,7 @@ function MainDrawer() {
           options={{ headerShown: false, drawerLabel: 'Farm' }}
         />
       )}
-      {canBLE(account) && (
+      {(bypass || canBLE(account)) && (
         <Drawer.Screen
           name="Devices"
           component={BLEStackNavigator}
@@ -80,7 +83,7 @@ function MainDrawer() {
           options={{ headerShown: false, drawerLabel: 'Devices' }}
         />
       )}
-      {canPOS(role) && (
+      {(bypass || canPOS(account)) && (
         <Drawer.Screen
           name="POS"
           component={POSScreen}
@@ -88,7 +91,7 @@ function MainDrawer() {
           options={{ drawerLabel: 'Point of Sale', title: 'POS' }}
         />
       )}
-      {(canShopAdmin(role) || canShopCustomer(role)) && (
+      {(bypass || canShopAdmin(account) || canShopCustomer(account)) && (
         <Drawer.Screen
           name="Shop"
           component={ShopStack}

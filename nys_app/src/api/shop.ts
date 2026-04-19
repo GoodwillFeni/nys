@@ -4,6 +4,18 @@ import type {
   POSCart, POSSale, POSPaymentMethod,
 } from '../types/shop';
 
+export interface ShopCustomer {
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export async function listCustomers(): Promise<ShopCustomer[]> {
+  const { data } = await api.get<{ data: ShopCustomer[] }>('/shop/customers');
+  return data.data;
+}
+
 // ── Products ──────────────────────────────────────────────────────────────
 export async function listProducts(): Promise<ShopProduct[]> {
   const { data } = await api.get<{ data: ShopProduct[] }>('/shop/products');
@@ -62,8 +74,26 @@ export async function posCheckout(payload: {
   customer_name?: string;
   customer_phone?: string;
   amount_received?: number;
+  payment_proof?: { uri: string; name: string; type: string } | null;
 }): Promise<POSSale> {
-  const { data } = await api.post<{ data: POSSale }>('/shop/pos/checkout', payload);
+  // If a proof photo is attached we have to send multipart/form-data.
+  if (payload.payment_proof) {
+    const form = new FormData();
+    form.append('payment_method', payload.payment_method);
+    if (payload.customer_id !== undefined)   form.append('customer_id', String(payload.customer_id));
+    if (payload.customer_name)               form.append('customer_name', payload.customer_name);
+    if (payload.customer_phone)              form.append('customer_phone', payload.customer_phone);
+    if (payload.amount_received !== undefined) form.append('amount_received', String(payload.amount_received));
+    form.append('payment_proof', payload.payment_proof as any);
+
+    const { data } = await api.post<{ data: POSSale }>('/shop/pos/checkout', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data.data;
+  }
+
+  const { payment_proof: _ignored, ...json } = payload;
+  const { data } = await api.post<{ data: POSSale }>('/shop/pos/checkout', json);
   return data.data;
 }
 

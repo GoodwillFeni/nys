@@ -1,8 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from '../../components/common/Button';
+import { Input } from '../../components/common/Input';
 import { listProducts } from '../../api/shop';
 import type { ShopProduct } from '../../types/shop';
 import { useAuthStore } from '../../store/auth';
@@ -13,10 +14,20 @@ type Nav = NativeStackNavigationProp<ShopStackParamList, 'ProductList'>;
 
 export function ShopScreen() {
   const nav = useNavigation<Nav>();
-  const role = useAuthStore((s) => s.activeRole());
+  const account = useAuthStore((s) => s.activeAccount());
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [cart, setCart] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) =>
+      p.product_name.toLowerCase().includes(q) ||
+      (p.product_type ?? '').toLowerCase().includes(q)
+    );
+  }, [products, search]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,14 +58,21 @@ export function ShopScreen() {
   return (
     <View style={styles.c}>
       <View style={styles.topRow}>
-        {canShopAdmin(role) && (
+        {canShopAdmin(account) && (
           <Button title="Manage orders" variant="secondary" onPress={() => nav.navigate('AllOrders')} />
         )}
         <Button title="My orders" variant="secondary" onPress={() => nav.navigate('MyOrders')} />
       </View>
 
+      <Input
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search products by name or type\u2026"
+        autoCorrect={false}
+      />
+
       <FlatList
-        data={products}
+        data={filteredProducts}
         keyExtractor={(p) => String(p.id)}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -68,7 +86,7 @@ export function ShopScreen() {
               <Text style={styles.price}>R {Number(item.actual_price).toFixed(2)}</Text>
             </View>
             <View style={styles.qty}>
-              <Text style={styles.qtyBtn} onPress={() => sub(item)}>\u2212</Text>
+              <Text style={styles.qtyBtn} onPress={() => sub(item)}>{'\u2212'}</Text>
               <Text style={styles.qtyVal}>{cart[item.id] ?? 0}</Text>
               <Text style={styles.qtyBtn} onPress={() => add(item)}>+</Text>
             </View>

@@ -169,7 +169,16 @@ class ShopPosController extends ShopBaseController
             'customer_name' => 'nullable|string|max:255',
             'customer_phone' => 'nullable|string|max:50',
             'amount_received' => 'nullable|numeric|min:0',
+            'payment_proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
+
+        $proofPath = null;
+        if ($request->hasFile('payment_proof')) {
+            $proofPath = $request->file('payment_proof')->store(
+                "shop/pos/proof/{$request->header('X-Account-ID')}",
+                'public'
+            );
+        }
 
         $userId = $request->user()->id;
 
@@ -271,6 +280,7 @@ class ShopPosController extends ShopBaseController
                 'paid_at' => $isPaid ? now() : null,
                 'paid_method' => $isPaid ? $paymentMethod : null,
                 'paid_amount' => $isPaid ? $totalAmount : null,
+                'payment_proof_path' => $proofPath,
             ]);
 
             AuditLogService::logCreate($sale, $request, 'Created POS sale');

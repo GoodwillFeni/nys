@@ -1,11 +1,6 @@
-export type Role =
-  | 'Owner'
-  | 'Admin'
-  | 'Viewer'
-  | 'FarmWorker'
-  | 'ShopKeeper'
-  | 'Customer'
-  | 'Super_Admin';
+import type { RouteName, ActionName } from '../permissions-registry';
+
+export type { RouteName, ActionName };
 
 export interface User {
   id: number;
@@ -20,8 +15,8 @@ export interface Account {
   id: number;
   name: string;
   type?: string;
-  role: Role;
-  can_manage_devices?: boolean;
+  route_access: RouteName[];
+  action_access: ActionName[];
 }
 
 export interface LoginResponse {

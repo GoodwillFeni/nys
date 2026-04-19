@@ -65,6 +65,22 @@
     background: linear-gradient(135deg, #ffba4b, #d66c02);
     color: #b9b9b9;
 }
+
+.button-primary {
+    background: linear-gradient(135deg, #8d7fff, #4b3ec7);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 16px;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    margin: 5px;
+    width: max-content;
+}
+.button-primary:hover {
+    background: linear-gradient(135deg, #7568f0, #392dad);
+    color: #e9e6ff;
+}
 /* End Global button styling */
 
 .text-muted {
@@ -339,7 +355,8 @@ input[type="date"]:focus {
   .button-info,
   .button-danger,
   .button-success,
-  .button-warning {
+  .button-warning,
+  .button-primary {
     font-size: 14px;
     padding: 8px 12px;
   }
