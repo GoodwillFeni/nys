@@ -328,21 +328,6 @@ export default {
   border-radius: 8px;
 }
 
-.table {
-  color: #fff;
-  background: transparent;
-}
-
-.table th,
-.table td {
-  color: #fff;
-}
-
-/* Bootstrap 5 applies cell background via :not(caption) selector; override it */
-.table > :not(caption) > * > * {
-  background-color: transparent !important;
-  color: #fff !important;
-}
 
 .table thead th {
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);

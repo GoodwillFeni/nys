@@ -229,16 +229,42 @@ const routes = [
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
+        path: '/Farm/AnimalTypes',
+        name: 'AnimalTypeList',
+        component: () => import('../components/views/farm/animal/AnimalTypeList.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/Farm/AddAnimalType',
         name: 'AddAnimalType',
         component: () => import('../components/views/farm/animal/AddAnimalType.vue'),
-        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/Farm/EditAnimalType/:id',
+        name: 'EditAnimalType',
+        props: true,
+        component: () => import('../components/views/farm/animal/EditAnimalType.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/Farm/AnimalBreeds',
+        name: 'AnimalBreedList',
+        component: () => import('../components/views/farm/animal/AnimalBreedList.vue'),
+        meta: { requiresAuth: true }
     },
     {
         path: '/Farm/AddAnimalBreed',
         name: 'AddAnimalBreed',
         component: () => import('../components/views/farm/animal/AddAnimalBreed.vue'),
-        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/Farm/EditAnimalBreed/:id',
+        name: 'EditAnimalBreed',
+        props: true,
+        component: () => import('../components/views/farm/animal/EditAnimalBreed.vue'),
+        meta: { requiresAuth: true }
     },
     // End Farm Routes
 

@@ -41,8 +41,12 @@ return [
     ['name' => 'AddAnimalEvent', 'path' => '/Farm/AddAnimalEvent/:id?', 'group' => 'Farm', 'label' => 'Add Animal Event'],
     ['name' => 'AnimalEventList', 'path' => '/Farm/AnimalEvents', 'group' => 'Farm', 'label' => 'Animal Event List'],
     ['name' => 'AnimalDeviceLink', 'path' => '/Farm/AnimalDeviceLink/:id', 'group' => 'Farm', 'label' => 'Animal Device Link'],
+    ['name' => 'AnimalTypeList', 'path' => '/Farm/AnimalTypes', 'group' => 'Farm', 'label' => 'Animal Type List'],
     ['name' => 'AddAnimalType', 'path' => '/Farm/AddAnimalType', 'group' => 'Farm', 'label' => 'Add Animal Type'],
+    ['name' => 'EditAnimalType', 'path' => '/Farm/EditAnimalType/:id', 'group' => 'Farm', 'label' => 'Edit Animal Type'],
+    ['name' => 'AnimalBreedList', 'path' => '/Farm/AnimalBreeds', 'group' => 'Farm', 'label' => 'Animal Breed List'],
     ['name' => 'AddAnimalBreed', 'path' => '/Farm/AddAnimalBreed', 'group' => 'Farm', 'label' => 'Add Animal Breed'],
+    ['name' => 'EditAnimalBreed', 'path' => '/Farm/EditAnimalBreed/:id', 'group' => 'Farm', 'label' => 'Edit Animal Breed'],
   ],
   'actions' => [
     ['name' => 'view', 'label' => 'View'],

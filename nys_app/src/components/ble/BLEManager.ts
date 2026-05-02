@@ -65,10 +65,91 @@ class BLE {
     }
   }
 
+  /**
+   * Connect, negotiate a larger MTU on Android (default 23 truncates writes),
+   * then discover services. Returns the device handle that has services
+   * attached — must be the one passed to read/write calls.
+   */
   async connect(id: string): Promise<Device> {
-    const d = await this.manager.connectToDevice(id, { timeout: 10000 });
-    await d.discoverAllServicesAndCharacteristics();
+    let d = await this.manager.connectToDevice(id, { timeout: 15000 });
+    if (Platform.OS === 'android') {
+      try { d = await d.requestMTU(185); } catch { /* MTU is best-effort */ }
+    }
+    // discoverAllServicesAndCharacteristics returns a NEW Device with
+    // services attached. The one we had before doesn't.
+    d = await d.discoverAllServicesAndCharacteristics();
     return d;
+  }
+
+  /** True if the device is currently connected. */
+  async isConnected(id: string): Promise<boolean> {
+    try { return await this.manager.isDeviceConnected(id); } catch { return false; }
+  }
+
+  /**
+   * Returns a Device handle ready for IO. Reuses the live connection if present
+   * (re-running service discovery to refresh the GATT cache). Only does a full
+   * disconnect+reconnect if the link is actually dead.
+   *
+   * Why not always reconnect: the ESP32 firmware defers deep sleep while a
+   * peer is connected. A spurious disconnect from the app side can drop the
+   * peer flag, the device's wake-window expires, and it sleeps mid-write.
+   */
+  async ensureConnected(id: string): Promise<Device> {
+    try {
+      if (await this.isConnected(id)) {
+        // Live link — just refresh services. requestMTU is idempotent on Android;
+        // discoverAllServicesAndCharacteristics returns a Device with services attached.
+        const cached = await this.manager.devices([id]);
+        const found = cached[0];
+        if (found) {
+          if (Platform.OS === 'android') {
+            try { await found.requestMTU(185); } catch { /* already negotiated */ }
+          }
+          return await found.discoverAllServicesAndCharacteristics();
+        }
+      }
+    } catch { /* fall through to fresh connect */ }
+    return await this.connect(id);
+  }
+
+  /**
+   * Manager-level write that resolves the device by ID at the moment of the
+   * write. Avoids stale Device handles entirely.
+   */
+  async writeStringByDeviceId(
+    deviceId: string,
+    serviceUUID: string,
+    charUUID: string,
+    base64Value: string,
+  ): Promise<void> {
+    await this.manager.writeCharacteristicWithResponseForDevice(
+      deviceId, serviceUUID, charUUID, base64Value
+    );
+  }
+
+  /**
+   * Fire-and-forget write — used for the COMMIT char where the device reboots
+   * immediately and won't be around to send an ACK back.
+   */
+  async writeStringNoResponseByDeviceId(
+    deviceId: string,
+    serviceUUID: string,
+    charUUID: string,
+    base64Value: string,
+  ): Promise<void> {
+    await this.manager.writeCharacteristicWithoutResponseForDevice(
+      deviceId, serviceUUID, charUUID, base64Value
+    );
+  }
+
+  async readStringByDeviceId(
+    deviceId: string,
+    serviceUUID: string,
+    charUUID: string,
+  ): Promise<string | null> {
+    const chr = await this.manager.readCharacteristicForDevice(deviceId, serviceUUID, charUUID);
+    return chr.value ?? null;
   }
 
   async disconnect(id: string): Promise<void> {

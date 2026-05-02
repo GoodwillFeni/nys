@@ -5,6 +5,9 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Auth\Notifications\ResetPassword;
+use App\Models\FarmAnimalEvent;
+use App\Models\FarmTransaction;
+use App\Observers\PnlMonthlyObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,5 +26,9 @@ class AppServiceProvider extends ServiceProvider
                 . '?token=' . $token
                 . '&email=' . urlencode($user->email);
         });
+
+        // Keep farm_pnl_monthly fresh on every event/transaction write.
+        FarmAnimalEvent::observe(PnlMonthlyObserver::class);
+        FarmTransaction::observe(PnlMonthlyObserver::class);
     }
 }

@@ -181,7 +181,7 @@ export default {
         });
 
         toast.success('Animal breed added successfully!');
-        this.$router.back();
+        this.$router.push({ name: 'AnimalBreedList' });
       } catch (error) {
         console.log(error.response?.data?.message)
         toast.error(error.response?.data?.message || 'Failed to add animal breed');

@@ -23,8 +23,8 @@
             </div>
           </div>
             <button type="button" class="button-info" @click="addAnimal()">Add Animal</button>
-            <button type="button" class="button-info" @click="addType()">Add Type</button>
-            <button type="button" class="button-info" @click="addBreed()">Add Breed</button>
+            <button type="button" class="button-info" @click="$router.push({ name: 'AnimalTypeList' })">Manage Types</button>
+            <button type="button" class="button-info" @click="$router.push({ name: 'AnimalBreedList' })">Manage Breeds</button>
             <button type="button" class="button-info" @click="$router.push({ name: 'AnimalEventList' })">Events</button>
         </div>
       </div>
@@ -166,12 +166,6 @@ export default {
   methods: {
     addAnimal() {
       this.$router.push({ name: "AddAnimal" });
-    },
-    addType() {
-      this.$router.push({ name: "AddAnimalType" });
-    },
-    addBreed() {
-      this.$router.push({ name: "AddAnimalBreed" });
     },
 
     DeviceLogs(animal) {
@@ -331,13 +325,4 @@ export default {
 }
 
 .modal-box input:focus { border-color: #6a5cff; }
-
-.button-success {
-  background: #2e7d32;
-  color: #fff;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
 </style>

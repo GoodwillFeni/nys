@@ -34,8 +34,10 @@
 #define NYS_TIME_NS              "time"
 #define NYS_TIME_VALID_EPOCH_MIN  1700000000
 
-#define NYS_AP_WINDOW_MS     60000
-#define INPUT_DEBOUNCE_MS    2000
+#define NYS_AP_WINDOW_MS         60000
+#define NYS_BLE_WAKE_WINDOW_MS   60000   // initial post-wake window so a phone can discover + connect
+#define NYS_BLE_MAX_HOLD_MS      300000  // hard cap: never hold awake more than 5 min (prevents stuck connections from draining battery)
+#define INPUT_DEBOUNCE_MS        2000
 #define GPS_FIX_TIMEOUT_S    300     // 5 minutes — used when NO previous fix
 #define GPS_FIX_TIMEOUT_SHORT_S 60  // 1 minute — used when previous fix exists
 

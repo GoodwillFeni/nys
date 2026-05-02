@@ -306,11 +306,6 @@ export default {
 .pnl-item span:last-child { font-size: 16px; font-weight: bold; }
 .pnl-period { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 8px; text-align: right; }
 
-/* Table */
-table { color: #e0e0e0; }
-thead { background: rgba(255,255,255,0.08); }
-th { color: rgba(255,255,255,0.7); }
-
 .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: #fff; }
 .badge-income { background: #2e7d32; }
 .badge-expense { background: #c62828; }

@@ -3,7 +3,7 @@
     <div class="card p-3 mb-3">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h4 class="m-0">Cart</h4>
-        <RouterLink class="button-info" to="/Shop/Products">Continue Shopping</RouterLink>
+        <button type="button" class="button-info" @click="$router.push('/Shop/Products')">Continue Shopping</button>
       </div>
       <div v-if="error"   class="alert alert-danger  mt-3 mb-0">{{ error }}</div>
       <div v-if="success" class="alert alert-success mt-3 mb-0">{{ success }}</div>
@@ -336,9 +336,6 @@ export default {
   border-radius: 8px;
 }
 
-.table { color: #fff; background: transparent; }
-.table th, .table td { color: #fff; }
-.table > :not(caption) > * > * { background-color: transparent !important; color: #fff !important; }
 
 .form-control {
   background: rgba(255,255,255,0.08) !important;

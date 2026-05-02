@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 
@@ -32,7 +33,15 @@ export function ConfigForm({ initial, onSubmit, submitting }: Props) {
     setVals((s) => ({ ...s, [k]: v }));
 
   return (
-    <ScrollView contentContainerStyle={styles.c}>
+    <KeyboardAwareScrollView
+      contentContainerStyle={styles.c}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      enableResetScrollToCoords={false}
+      extraScrollHeight={80}
+      extraHeight={120}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.sect}>WiFi</Text>
       <Input label="SSID" value={vals.ssid} onChangeText={(v) => set('ssid', v)} autoCapitalize="none" />
       <Input label="Password" value={vals.password} onChangeText={(v) => set('password', v)} secureTextEntry />
@@ -49,11 +58,12 @@ export function ConfigForm({ initial, onSubmit, submitting }: Props) {
 
       <View style={{ height: 12 }} />
       <Button title="Save & Restart Device" loading={submitting} onPress={() => onSubmit(vals)} />
-    </ScrollView>
+      <View style={{ height: 40 }} />
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  c: { padding: 16, paddingBottom: 40 },
+  c: { padding: 16 },
   sect: { fontSize: 13, fontWeight: '600', color: '#7f8c8d', marginTop: 16, marginBottom: 6, textTransform: 'uppercase' },
 });

@@ -28,6 +28,14 @@ export async function updateAnimal(id: number, payload: Partial<{
   return data;
 }
 
+export interface OffspringInput {
+  animal_tag: number | string;
+  sex: 'Male' | 'Female' | 'Unknown';
+  breed_id?: number;
+  animal_name?: string;
+  notes?: string;
+}
+
 export async function logEvent(payload: {
   account_id: number;
   farm_id: number;
@@ -37,6 +45,9 @@ export async function logEvent(payload: {
   cost?: number;
   cost_type?: CostType;
   meta?: Record<string, any>;
+  /** Birth-only: if event_type contains "birth", supply offspring details and
+   * the backend auto-creates the animals + links mother_id. */
+  offspring?: OffspringInput[];
 }): Promise<AnimalEvent> {
   const { data } = await api.post<AnimalEvent>('/animal-events/single', payload);
   return data;

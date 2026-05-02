@@ -125,9 +125,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:FarmList,delete')->delete('farm/farms/{farm}', [FarmController::class, 'destroy']);
 
         Route::middleware('permission:AnimalList,view')->get('farm/animals/types', [AnimalController::class, 'types']);
+        Route::middleware('permission:AnimalList,view')->get('farm/animals/types/{id}', [AnimalController::class, 'showType']);
         Route::middleware('permission:AddAnimalType,add')->post('farm/animals/types', [AnimalController::class, 'storeType']);
+        Route::middleware('permission:AddAnimalType,edit')->put('farm/animals/types/{id}', [AnimalController::class, 'updateType']);
+        Route::middleware('permission:AddAnimalType,delete')->delete('farm/animals/types/{id}', [AnimalController::class, 'destroyType']);
         Route::middleware('permission:AnimalList,view')->get('farm/animals/breeds', [AnimalController::class, 'breeds']);
+        Route::middleware('permission:AnimalList,view')->get('farm/animals/breeds/{id}', [AnimalController::class, 'showBreed']);
         Route::middleware('permission:AddAnimalBreed,add')->post('farm/animals/breeds', [AnimalController::class, 'storeBreed']);
+        Route::middleware('permission:AddAnimalBreed,edit')->put('farm/animals/breeds/{id}', [AnimalController::class, 'updateBreed']);
+        Route::middleware('permission:AddAnimalBreed,delete')->delete('farm/animals/breeds/{id}', [AnimalController::class, 'destroyBreed']);
         Route::middleware('permission:AnimalList,view')->get('farm/animals', [AnimalController::class, 'index']);
         Route::middleware('permission:AddAnimal,add')->post('farm/animals', [AnimalController::class, 'store']);
         Route::middleware('permission:EditAnimal,view')->get('farm/animals/{animal}', [AnimalController::class, 'show']);

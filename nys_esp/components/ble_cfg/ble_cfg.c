@@ -55,6 +55,9 @@ typedef struct {
 static staged_t s_staged;
 static nys_cfg_t s_current;
 static uint8_t s_own_addr_type;
+static volatile bool s_peer_connected = false;
+
+bool ble_cfg_peer_connected(void) { return s_peer_connected; }
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 static int copy_str_from_ctxt(struct ble_gatt_access_ctxt *ctxt, char *out, size_t out_sz)
@@ -170,12 +173,46 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
             { .uuid = &CHR_HB_UUID.u,   .access_cb = access_hb,     .flags = BLE_GATT_CHR_F_WRITE },
             { .uuid = &CHR_LOC_UUID.u,  .access_cb = access_loc,    .flags = BLE_GATT_CHR_F_WRITE },
             { .uuid = &CHR_IN1_UUID.u,  .access_cb = access_in1,    .flags = BLE_GATT_CHR_F_WRITE },
-            { .uuid = &CHR_CMT_UUID.u,  .access_cb = access_commit, .flags = BLE_GATT_CHR_F_WRITE },
+            { .uuid = &CHR_CMT_UUID.u,  .access_cb = access_commit, .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP },
             { 0 }
         },
     },
     { 0 },
 };
+
+/* Forward declarations */
+static void start_advertising(void);
+
+/* ── GAP event callback — track connect/disconnect for sleep deferral ──── */
+static int gap_event_cb(struct ble_gap_event *event, void *arg)
+{
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        if (event->connect.status == 0) {
+            s_peer_connected = true;
+            ESP_LOGI(TAG, "Peer connected (handle=%d)", event->connect.conn_handle);
+        } else {
+            ESP_LOGW(TAG, "Connect failed status=%d, restarting advertising", event->connect.status);
+            start_advertising();
+        }
+        break;
+
+    case BLE_GAP_EVENT_DISCONNECT:
+        s_peer_connected = false;
+        ESP_LOGI(TAG, "Peer disconnected (reason=%d), restarting advertising", event->disconnect.reason);
+        start_advertising();
+        break;
+
+    case BLE_GAP_EVENT_ADV_COMPLETE:
+        ESP_LOGI(TAG, "Adv complete, restarting");
+        start_advertising();
+        break;
+
+    default:
+        break;
+    }
+    return 0;
+}
 
 /* ── advertising ─────────────────────────────────────────────────────────── */
 static void start_advertising(void)
@@ -205,7 +242,7 @@ static void start_advertising(void)
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
     rc = ble_gap_adv_start(s_own_addr_type, NULL, BLE_HS_FOREVER,
-                           &adv_params, NULL, NULL);
+                           &adv_params, gap_event_cb, NULL);
     if (rc != 0) ESP_LOGE(TAG, "adv_start rc=%d", rc);
     else         ESP_LOGI(TAG, "BLE advertising as '%s'", name);
 }

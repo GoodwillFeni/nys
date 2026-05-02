@@ -4,98 +4,150 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\FarmTransaction;
 use App\Models\FarmAnimalEvent;
-use Illuminate\Support\Facades\DB;
+use App\Models\FarmPnlMonthly;
+use App\Models\FarmTransaction;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
+/**
+ * P&L report — backed by farm_pnl_monthly rollup table for fast lifetime totals.
+ *
+ * - Default request (no from/to): returns LIFETIME totals (one SUM over rollup).
+ * - With from/to: queries the rollup filtered by (year, month) — still few rows.
+ * - With ?detail=1: ALSO computes event_type/category breakdowns from source
+ *   tables (cached 5 min) for drill-down.
+ */
 class FarmReportController extends Controller
 {
     public function pnl(Request $request)
     {
-        $accountId = $request->account_id
-            ?? $request->header('X-Account-ID');
+        $accountId = (int) ($request->account_id ?? $request->header('X-Account-ID'));
+        $farmId    = $request->farm_id ? (int) $request->farm_id : null;
+        $from      = $request->input('from');
+        $to        = $request->input('to');
+        $wantDetail = (bool) $request->boolean('detail');
 
-        $from = $request->from ?? now()->startOfMonth()->toDateString();
-        $to = $request->to ?? now()->toDateString();
+        if (!$accountId) {
+            return response()->json(['status' => 'error', 'message' => 'Active account not selected'], 400);
+        }
 
-        // ── Animal Events P&L ────────────────────────────────────────────────
-        $eventQuery = FarmAnimalEvent::where('deleted', 0)
-            ->whereBetween('event_date', [$from, $to]);
+        // ── Aggregate the rollup ─────────────────────────────────────────────
+        $rollup = FarmPnlMonthly::query()->where('account_id', $accountId);
+        if ($farmId !== null) $rollup->where('farm_id', $farmId);
 
-        if ($accountId) $eventQuery->where('account_id', $accountId);
-        if ($request->farm_id) $eventQuery->where('farm_id', $request->farm_id);
+        if ($from || $to) {
+            // (year*100+month) sortable key — filter without month-by-month gymnastics
+            $fromKey = $from ? $this->dateToYm($from) : 0;
+            $toKey   = $to   ? $this->dateToYm($to)   : 999912;
+            $rollup->whereRaw('(year * 100 + month) BETWEEN ? AND ?', [$fromKey, $toKey]);
+        }
 
-        $eventSummary = (clone $eventQuery)->selectRaw("
-            SUM(CASE WHEN cost_type = 'income' THEN cost ELSE 0 END) as income,
-            SUM(CASE WHEN cost_type = 'expense' THEN cost ELSE 0 END) as expense,
-            SUM(CASE WHEN cost_type = 'running' THEN cost ELSE 0 END) as running,
-            SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss,
-            SUM(CASE WHEN cost_type = 'birth' THEN cost ELSE 0 END) as birth,
-            SUM(CASE WHEN cost_type = 'investment' THEN cost ELSE 0 END) as investment
+        $totals = $rollup->selectRaw("
+            COALESCE(SUM(events_income),     0) AS events_income,
+            COALESCE(SUM(events_expense),    0) AS events_expense,
+            COALESCE(SUM(events_running),    0) AS events_running,
+            COALESCE(SUM(events_loss),       0) AS events_loss,
+            COALESCE(SUM(events_birth),      0) AS events_birth,
+            COALESCE(SUM(events_investment), 0) AS events_investment,
+            COALESCE(SUM(tx_income),         0) AS tx_income,
+            COALESCE(SUM(tx_expense),        0) AS tx_expense,
+            COALESCE(SUM(tx_loss),           0) AS tx_loss
         ")->first();
 
-        // Breakdown by event type
-        $eventBreakdown = (clone $eventQuery)
-            ->selectRaw('event_type, cost_type, SUM(cost) as total, COUNT(*) as count')
-            ->groupBy('event_type', 'cost_type')
-            ->get();
+        // ── Operating (cash) — excludes birth (natural increase) and investment ──
+        $opIncome  = (float) $totals->events_income + (float) $totals->tx_income;
+        $opExpense = (float) $totals->events_expense + (float) $totals->events_running + (float) $totals->tx_expense;
+        $opLoss    = (float) $totals->events_loss + (float) $totals->tx_loss;
+        $opProfit  = $opIncome - $opExpense - $opLoss;
 
-        // ── Inventory Transactions P&L ───────────────────────────────────────
-        $txQuery = FarmTransaction::where('deleted', 0)
-            ->whereBetween('transaction_date', [$from, $to]);
+        // ── Natural increase (births grow herd value, no cash) ───────────────
+        $natural = (float) $totals->events_birth;
 
-        if ($accountId) $txQuery->where('account_id', $accountId);
-        if ($request->farm_id) $txQuery->where('farm_id', $request->farm_id);
+        // ── Capital (owner injection) ────────────────────────────────────────
+        $investment = (float) $totals->events_investment;
 
-        $txSummary = (clone $txQuery)->selectRaw("
-            SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-            SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-            SUM(CASE WHEN type = 'loss' THEN amount ELSE 0 END) as loss
-        ")->first();
+        $equityChange = $opProfit + $natural + $investment;
 
-        // Breakdown by category
-        $txBreakdown = (clone $txQuery)
-            ->selectRaw('category, type, SUM(amount) as total, COUNT(*) as count')
-            ->groupBy('category', 'type')
-            ->get();
-
-        // ── Operating totals (excludes investment) ───────────────────────────
-        $opIncome = ($eventSummary->income ?? 0) + ($eventSummary->birth ?? 0) + ($txSummary->income ?? 0);
-        $opExpense = ($eventSummary->expense ?? 0) + ($eventSummary->running ?? 0) + ($txSummary->expense ?? 0);
-        $opLoss = ($eventSummary->loss ?? 0) + ($txSummary->loss ?? 0);
-        $opProfit = $opIncome - $opExpense - $opLoss;
-
-        // ── Capital (investment) ─────────────────────────────────────────────
-        $totalInvestment = $eventSummary->investment ?? 0;
-        $totalBirth = $eventSummary->birth ?? 0;
-
-        return response()->json([
-            'period' => ['from' => $from, 'to' => $to],
+        $response = [
+            'period' => [
+                'from'     => $from,
+                'to'       => $to,
+                'lifetime' => !$from && !$to,
+            ],
             'operating' => [
-                'income' => round($opIncome, 2),
+                'income'  => round($opIncome, 2),
                 'expense' => round($opExpense, 2),
-                'loss' => round($opLoss, 2),
-                'profit' => round($opProfit, 2),
+                'loss'    => round($opLoss, 2),
+                'profit'  => round($opProfit, 2),
+            ],
+            'natural_increase' => [
+                'birth_value' => round($natural, 2),
             ],
             'capital' => [
-                'investment' => round($totalInvestment, 2),
-                'birth_value' => round($totalBirth, 2),
+                'investment'  => round($investment, 2),
+                'birth_value' => round($natural, 2), // backward compat
             ],
+            'total_equity_change' => round($equityChange, 2),
             'animal_events' => [
-                'income' => round($eventSummary->income ?? 0, 2),
-                'expense' => round($eventSummary->expense ?? 0, 2),
-                'running' => round($eventSummary->running ?? 0, 2),
-                'loss' => round($eventSummary->loss ?? 0, 2),
-                'birth' => round($eventSummary->birth ?? 0, 2),
-                'investment' => round($eventSummary->investment ?? 0, 2),
-                'breakdown' => $eventBreakdown,
+                'income'     => round((float) $totals->events_income, 2),
+                'expense'    => round((float) $totals->events_expense, 2),
+                'running'    => round((float) $totals->events_running, 2),
+                'loss'       => round((float) $totals->events_loss, 2),
+                'birth'      => round((float) $totals->events_birth, 2),
+                'investment' => round((float) $totals->events_investment, 2),
             ],
             'inventory' => [
-                'income' => round($txSummary->income ?? 0, 2),
-                'expense' => round($txSummary->expense ?? 0, 2),
-                'loss' => round($txSummary->loss ?? 0, 2),
-                'breakdown' => $txBreakdown,
+                'income'  => round((float) $totals->tx_income, 2),
+                'expense' => round((float) $totals->tx_expense, 2),
+                'loss'    => round((float) $totals->tx_loss, 2),
             ],
-        ]);
+        ];
+
+        // Optional drill-down breakdowns from source tables (cached 5 min)
+        if ($wantDetail) {
+            $cacheKey = sprintf(
+                'pnl:detail:%d:%s:%s:%s',
+                $accountId,
+                $farmId ?? 'all',
+                $from ?? 'lifetime',
+                $to ?? 'now'
+            );
+            $detail = Cache::remember($cacheKey, 300, function () use ($accountId, $farmId, $from, $to) {
+                $eventQ = FarmAnimalEvent::where('deleted', 0)->where('account_id', $accountId);
+                $txQ    = FarmTransaction::where('deleted', 0)->where('account_id', $accountId);
+                if ($farmId !== null) {
+                    $eventQ->where('farm_id', $farmId);
+                    $txQ->where('farm_id', $farmId);
+                }
+                if ($from) {
+                    $eventQ->where('event_date', '>=', $from);
+                    $txQ->where('transaction_date', '>=', $from);
+                }
+                if ($to) {
+                    $eventQ->where('event_date', '<=', $to);
+                    $txQ->where('transaction_date', '<=', $to);
+                }
+                return [
+                    'event_breakdown' => $eventQ
+                        ->selectRaw('event_type, cost_type, SUM(cost) as total, COUNT(*) as count')
+                        ->groupBy('event_type', 'cost_type')->get(),
+                    'tx_breakdown' => $txQ
+                        ->selectRaw('category, type, SUM(amount) as total, COUNT(*) as count')
+                        ->groupBy('category', 'type')->get(),
+                ];
+            });
+            $response['animal_events']['breakdown'] = $detail['event_breakdown'];
+            $response['inventory']['breakdown']     = $detail['tx_breakdown'];
+        }
+
+        return response()->json($response);
+    }
+
+    /** "2026-04-15" → 202604 (sortable year-month key). */
+    private function dateToYm(string $date): int
+    {
+        $d = Carbon::parse($date);
+        return $d->year * 100 + $d->month;
     }
 }

@@ -262,14 +262,4 @@ h2 { margin-top: 0; color: #6a5cff; }
 .check span { color: #2c3e50; }
 .check input { accent-color: #6a5cff; }
 .actions-row { display: flex; gap: 10px; margin-top: 12px; }
-button {
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: 0;
-  cursor: pointer;
-  font-weight: 600;
-}
-.button-info { background: #6a5cff; color: #fff; }
-.button-info:disabled { opacity: 0.6; cursor: not-allowed; }
-.button-warning { background: #e69b3b; color: #fff; }
 </style>

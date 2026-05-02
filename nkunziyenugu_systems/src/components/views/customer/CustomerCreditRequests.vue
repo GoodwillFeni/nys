@@ -150,16 +150,6 @@ export default {
   border-radius: 8px;
 }
 
-.table {
-  color: #fff;
-  background: transparent;
-}
-
-.table > :not(caption) > * > * {
-  background-color: transparent !important;
-  color: #fff !important;
-}
-
 .form-control {
   background: rgba(255, 255, 255, 0.08) !important;
   border: 1px solid rgba(255, 255, 255, 0.18) !important;

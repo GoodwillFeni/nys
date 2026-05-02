@@ -1,31 +1,39 @@
-import { Device } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
+import { bleManager } from './BLEManager';
 
-// Must match nys_esp/components/ble_cfg/ble_cfg.c
-export const SERVICE_UUID      = 'a7e80000-4e4e-5953-0000-000000000001';
-export const CHR_DEVICE_UID    = 'a7e80000-4e4e-5953-0000-000000000002';
-export const CHR_SSID          = 'a7e80000-4e4e-5953-0000-000000000003';
-export const CHR_PASSWORD      = 'a7e80000-4e4e-5953-0000-000000000004';
-export const CHR_API_URL       = 'a7e80000-4e4e-5953-0000-000000000005';
-export const CHR_HB_INTERVAL   = 'a7e80000-4e4e-5953-0000-000000000006';
-export const CHR_LOC_INTERVAL  = 'a7e80000-4e4e-5953-0000-000000000007';
-export const CHR_INPUT1_DESC   = 'a7e80000-4e4e-5953-0000-000000000008';
-export const CHR_COMMIT        = 'a7e80000-4e4e-5953-0000-000000000009';
+// Match the on-air UUIDs the device actually broadcasts. NimBLE's
+// BLE_UUID128_INIT() takes bytes little-endian, so the discriminator (0x01,
+// 0x02, ..., 0x09) lands in byte[15] and shows up at the START of the
+// canonical UUID string ("01a7e800-...").
+export const SERVICE_UUID      = '01a7e800-004e-5953-0000-000000000000';
+export const CHR_DEVICE_UID    = '02a7e800-004e-5953-0000-000000000000';
+export const CHR_SSID          = '03a7e800-004e-5953-0000-000000000000';
+export const CHR_PASSWORD      = '04a7e800-004e-5953-0000-000000000000';
+export const CHR_API_URL       = '05a7e800-004e-5953-0000-000000000000';
+export const CHR_HB_INTERVAL   = '06a7e800-004e-5953-0000-000000000000';
+export const CHR_LOC_INTERVAL  = '07a7e800-004e-5953-0000-000000000000';
+export const CHR_INPUT1_DESC   = '08a7e800-004e-5953-0000-000000000000';
+export const CHR_COMMIT        = '09a7e800-004e-5953-0000-000000000000';
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 const fromB64 = (s: string) => Buffer.from(s, 'base64').toString('utf8');
 
-export async function readStringChar(dev: Device, charUUID: string): Promise<string> {
-  const chr = await dev.readCharacteristicForService(SERVICE_UUID, charUUID);
-  return chr.value ? fromB64(chr.value) : '';
+/**
+ * All GATT operations work by deviceId, NOT a stored Device handle. This
+ * avoids the "Service ... for device ? not found" failure that happens when
+ * a cached Device handle goes stale (link drops, services not re-discovered).
+ */
+export async function readStringChar(deviceId: string, charUUID: string): Promise<string> {
+  const v = await bleManager.readStringByDeviceId(deviceId, SERVICE_UUID, charUUID);
+  return v ? fromB64(v) : '';
 }
 
-export async function writeStringChar(dev: Device, charUUID: string, value: string): Promise<void> {
-  await dev.writeCharacteristicWithResponseForService(SERVICE_UUID, charUUID, b64(value));
+export async function writeStringChar(deviceId: string, charUUID: string, value: string): Promise<void> {
+  await bleManager.writeStringByDeviceId(deviceId, SERVICE_UUID, charUUID, b64(value));
 }
 
-export async function writeUintChar(dev: Device, charUUID: string, value: number): Promise<void> {
-  await writeStringChar(dev, charUUID, String(value));
+export async function writeUintChar(deviceId: string, charUUID: string, value: number): Promise<void> {
+  await writeStringChar(deviceId, charUUID, String(value));
 }
 
 export interface NYSConfigPayload {
@@ -37,19 +45,22 @@ export interface NYSConfigPayload {
   input1_desc?: string;
 }
 
-export async function writeNYSConfig(dev: Device, cfg: NYSConfigPayload): Promise<void> {
-  if (cfg.ssid !== undefined)                 await writeStringChar(dev, CHR_SSID, cfg.ssid);
-  if (cfg.password !== undefined)             await writeStringChar(dev, CHR_PASSWORD, cfg.password);
-  if (cfg.api_url !== undefined)              await writeStringChar(dev, CHR_API_URL, cfg.api_url);
-  if (cfg.heartbeat_interval_s !== undefined) await writeUintChar(dev, CHR_HB_INTERVAL, cfg.heartbeat_interval_s);
-  if (cfg.location_interval_s !== undefined)  await writeUintChar(dev, CHR_LOC_INTERVAL, cfg.location_interval_s);
-  if (cfg.input1_desc !== undefined)          await writeStringChar(dev, CHR_INPUT1_DESC, cfg.input1_desc);
+export async function writeNYSConfig(deviceId: string, cfg: NYSConfigPayload): Promise<void> {
+  if (cfg.ssid !== undefined)                 await writeStringChar(deviceId, CHR_SSID, cfg.ssid);
+  if (cfg.password !== undefined)             await writeStringChar(deviceId, CHR_PASSWORD, cfg.password);
+  if (cfg.api_url !== undefined)              await writeStringChar(deviceId, CHR_API_URL, cfg.api_url);
+  if (cfg.heartbeat_interval_s !== undefined) await writeUintChar(deviceId, CHR_HB_INTERVAL, cfg.heartbeat_interval_s);
+  if (cfg.location_interval_s !== undefined)  await writeUintChar(deviceId, CHR_LOC_INTERVAL, cfg.location_interval_s);
+  if (cfg.input1_desc !== undefined)          await writeStringChar(deviceId, CHR_INPUT1_DESC, cfg.input1_desc);
 }
 
-export async function commitConfig(dev: Device): Promise<void> {
-  await writeStringChar(dev, CHR_COMMIT, '1');
+export async function commitConfig(deviceId: string): Promise<void> {
+  // Fire-and-forget: the device immediately calls esp_restart() and won't ACK.
+  // Using write-with-response would always show as "failed" on the app side.
+  const b64v = Buffer.from('1', 'utf8').toString('base64');
+  await bleManager.writeStringNoResponseByDeviceId(deviceId, SERVICE_UUID, CHR_COMMIT, b64v);
 }
 
-export async function readDeviceUid(dev: Device): Promise<string> {
-  return readStringChar(dev, CHR_DEVICE_UID);
+export async function readDeviceUid(deviceId: string): Promise<string> {
+  return readStringChar(deviceId, CHR_DEVICE_UID);
 }

@@ -163,20 +163,6 @@ export default {
 </script>
 
 <style scoped>
-table {
-  background: linear-gradient(135deg, #27253f, #605a6d);
-  color: #fff;
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 10px;
-  border-bottom: 1px solid #fff;
-  text-align: left;
-}
-
 .action-cell {
   white-space: nowrap;
 }

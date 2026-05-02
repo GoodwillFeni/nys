@@ -38,7 +38,7 @@ class CheckPermission
         if (!$user->canDo($route, $action, (int) $accountId)) {
             return response()->json([
                 'status'  => 'error',
-                'message' => "Forbidden \u2014 missing permission {$route}:{$action}",
+                'message' => "Forbidden - missing permission {$route}:{$action}",
             ], 403);
         }
 

@@ -19,14 +19,14 @@ class AnimalController extends Controller
             ?? $request->header('X-Account-ID')
             ?? optional($request->user())->account_id;
 
-        $query = FarmAnimal::with(
+        $query = FarmAnimal::with([
                             'animalType',
                             'breed',
                             'farm',
                             'account',
-                            //'events',
-                            'deviceLinks'
-                            );
+                            'deviceLinks',
+                            'mother:id,animal_tag,animal_name',
+                            ]);
 
         if ($accountId) {
             $query->where('account_id', $accountId);
@@ -39,7 +39,11 @@ class AnimalController extends Controller
         if ($request->status) {
             $query->where('status', $request->status);
         }
-        
+
+        if ($request->mother_id) {
+            $query->where('mother_id', $request->mother_id);
+        }
+
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('animal_tag', 'like', "%{$request->search}%")
@@ -111,14 +115,105 @@ class AnimalController extends Controller
         $request->validate([
             'name' => 'required|string|max:255|unique:farm_animal_types,name',
             'description' => 'nullable|string',
+            'default_birth_value' => 'nullable|numeric|min:0',
         ]);
 
         $type = FarmAnimalType::create([
             'name' => $request->name,
             'description' => $request->description,
+            'default_birth_value' => $request->default_birth_value ?? 0,
         ]);
 
         return response()->json($type, 201);
+    }
+
+    /**
+     * Update an existing animal type. Used by the inline editor on the types
+     * list (mainly to set/adjust default_birth_value for the natural-increase
+     * P&L line).
+     */
+    public function updateType(Request $request, $id)
+    {
+        $type = FarmAnimalType::where('id', $id)->where('deleted', '!=', 1)->firstOrFail();
+
+        $request->validate([
+            'name' => 'sometimes|required|string|max:255|unique:farm_animal_types,name,' . $type->id,
+            'description' => 'nullable|string',
+            'default_birth_value' => 'nullable|numeric|min:0',
+        ]);
+
+        $type->fill($request->only(['name', 'description', 'default_birth_value']));
+        $type->save();
+
+        return response()->json($type);
+    }
+
+    /** Get a single animal type for the edit form. */
+    public function showType($id)
+    {
+        $type = FarmAnimalType::where('id', $id)->where('deleted', '!=', 1)->firstOrFail();
+        return response()->json($type);
+    }
+
+    /** Soft-delete an animal type. Refuses if any non-deleted animals still reference it. */
+    public function destroyType($id)
+    {
+        $type = FarmAnimalType::where('id', $id)->where('deleted', '!=', 1)->firstOrFail();
+
+        $inUse = FarmAnimal::where('animal_type_id', $type->id)->where('deleted', '!=', 1)->exists();
+        if ($inUse) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This type is still used by one or more animals. Reassign or remove them first.',
+            ], 422);
+        }
+
+        $type->deleted = 1;
+        $type->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Animal type deleted']);
+    }
+
+    /** Get a single breed for the edit form. */
+    public function showBreed($id)
+    {
+        $breed = AnimalBreed::with('animalType:id,name')->findOrFail($id);
+        return response()->json($breed);
+    }
+
+    /** Update breed name / description / type. */
+    public function updateBreed(Request $request, $id)
+    {
+        $breed = AnimalBreed::findOrFail($id);
+
+        $request->validate([
+            'animal_type_id' => 'sometimes|required|integer|exists:farm_animal_types,id',
+            'breed_name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+        ]);
+
+        $breed->fill($request->only(['animal_type_id', 'breed_name', 'description']));
+        $breed->save();
+
+        return response()->json($breed);
+    }
+
+    /** Hard-delete a breed (no soft-delete column on this table). */
+    public function destroyBreed($id)
+    {
+        $breed = AnimalBreed::findOrFail($id);
+
+        $inUse = FarmAnimal::where('breed_id', $breed->id)->where('deleted', '!=', 1)->exists();
+        if ($inUse) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This breed is still used by one or more animals. Reassign or remove them first.',
+            ], 422);
+        }
+
+        $breed->delete();
+
+        return response()->json(['status' => 'success', 'message' => 'Breed deleted']);
     }
 
     public function show(Request $request, FarmAnimal $animal) // Fetch a single animal

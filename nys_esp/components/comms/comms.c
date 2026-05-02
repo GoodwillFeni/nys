@@ -416,11 +416,29 @@ static esp_err_t http_post_json(const nys_cfg_t *cfg, const char *json)
     return err;
 }
 
+/**
+ * Allocate the next message_seq from the shared queue counter and persist it
+ * to NVS so the next boot continues the sequence (no duplicates after restart).
+ */
+static uint32_t next_message_seq(void)
+{
+    uint32_t seq = s_queue_next_seq++;
+    if (s_queue_next_seq == 0) s_queue_next_seq = 1; // wrap-around guard
+    nvs_handle_t h;
+    if (nvs_open(NYS_QUEUE_NS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u32(h, "seq", s_queue_next_seq);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    }
+    return seq;
+}
+
 esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
 {
     if (!cfg) return ESP_ERR_INVALID_ARG;
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
+    cJSON_AddNumberToObject(root, "message_seq", (double)next_message_seq());
     cJSON_AddNumberToObject(root, "uptime_s", (double)time_uptime_s());
     int64_t epoch = time_now_epoch_s();
     if (epoch > 0) cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch);
@@ -437,6 +455,7 @@ esp_err_t http_send_input_change(const nys_cfg_t *cfg, int level)
     if (!cfg) return ESP_ERR_INVALID_ARG;
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
+    cJSON_AddNumberToObject(root, "message_seq", (double)next_message_seq());
     cJSON_AddNumberToObject(root, "uptime_s", (double)time_uptime_s());
     int64_t epoch = time_now_epoch_s();
     if (epoch > 0) cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch);
@@ -459,6 +478,7 @@ static esp_err_t http_send_location_record(const nys_cfg_t *cfg, const nys_queue
     if (!cfg || !rec) return ESP_ERR_INVALID_ARG;
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
+    cJSON_AddNumberToObject(root, "message_seq", (double)rec->seq);
     cJSON_AddNumberToObject(root, "uptime_s", (double)rec->ts_s);
     if (rec->queued_at_epoch_s > 0)
         cJSON_AddNumberToObject(root, "message_timestamp", (double)rec->queued_at_epoch_s);

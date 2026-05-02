@@ -85,6 +85,31 @@
             </select>
           </div>
 
+          <!-- BIRTH OFFSPRING (cost_type === 'birth') -->
+          <div v-if="isBirth" class="offspring-section">
+            <div class="offspring-header-row">
+              <strong>Offspring</strong>
+              <div class="num-born">
+                <label>Number born</label>
+                <input type="number" min="1" max="20" v-model.number="offspringCount" @change="syncOffspringCount" />
+              </div>
+            </div>
+            <span v-if="motherSex && motherSex.toLowerCase() !== 'female'" class="warning-text">
+              Selected animal is sex='{{ motherSex }}'. Birth events require a Female animal.
+            </span>
+            <div v-for="(o, i) in form.offspring" :key="i" class="offspring-row">
+              <span class="calf-num">#{{ i + 1 }}</span>
+              <input class="calf-tag" v-model="o.animal_tag" placeholder="Tag (blank = auto)" />
+              <select class="calf-sex" v-model="o.sex" required>
+                <option value="" disabled>Sex</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+              <input class="calf-name" v-model="o.animal_name" placeholder="Name (optional)" />
+            </div>
+          </div>
+
           <!-- META -->
           <div class="input-group">
             <textarea v-model="form.meta.notes" placeholder="Notes (optional)"></textarea>
@@ -134,6 +159,8 @@ export default {
       animals: [],
       animalTypes: [],
 
+      offspringCount: 1,
+
       form: {
         account_id: '',
         farm_id: '',
@@ -144,10 +171,25 @@ export default {
         cost_type: 'expense',
         animal_id: '',
         animal_type: '',
+        offspring: [],
         meta: {
           notes: ''
         }
       }
+    }
+  },
+
+  computed: {
+    // A birth = cost_type set to 'birth'. Whatever event_type they typed
+    // ("New calf", "Twin lambs", etc.) is just description.
+    isBirth() {
+      return this.form.cost_type === 'birth';
+    },
+    selectedAnimal() {
+      return this.animals.find(a => String(a.id) === String(this.form.animal_id));
+    },
+    motherSex() {
+      return this.selectedAnimal?.sex ?? '';
     }
   },
 
@@ -228,6 +270,13 @@ export default {
       }
     },
 
+    syncOffspringCount() {
+      const target = Math.max(1, Math.min(20, Number(this.offspringCount) || 1));
+      const list = this.form.offspring;
+      while (list.length < target) list.push({ animal_tag: '', sex: '', animal_name: '' });
+      while (list.length > target) list.pop();
+    },
+
     async submit() {
       try {
         this.loading = true;
@@ -236,14 +285,33 @@ export default {
           ? '/animal-events/single'
           : '/animal-events/bulk';
 
-        await api.post(url, this.form);
+        // Strip offspring from non-birth payloads.
+        // Strip cost when it's 0 on a Birth so the backend auto-fills from default_birth_value.
+        const payload = { ...this.form };
+        if (!this.isBirth) {
+          delete payload.offspring;
+        } else if (!payload.cost || Number(payload.cost) === 0) {
+          delete payload.cost;
+        }
 
-        toast.success("Event saved successfully");
+        await api.post(url, payload);
+
+        toast.success(this.isBirth
+          ? `Birth recorded — ${this.form.offspring.length} offspring created`
+          : "Event saved successfully");
 
         this.$router.back();
 
       } catch (e) {
-        toast.error(e.response?.data?.message || "Failed to save event");
+        // Surface Laravel validation errors (422) and generic server errors clearly.
+        const data = e.response?.data;
+        let msg = data?.message || "Failed to save event";
+        if (data?.errors) {
+          const lines = Object.entries(data.errors).map(([k, v]) => `${k}: ${(Array.isArray(v) ? v[0] : v)}`);
+          msg = `${msg} — ${lines.join('; ')}`;
+        }
+        toast.error(msg);
+        console.error('Save event failed:', data);
       } finally {
         this.loading = false;
       }
@@ -257,6 +325,12 @@ export default {
         this.loadAnimals();
         this.loadAnimalTypes();
       }
+    },
+    isBirth(val) {
+      // When user picks cost_type=Birth, ensure at least one offspring row exists
+      if (val && this.form.offspring.length === 0) {
+        this.syncOffspringCount();
+      }
     }
   }
 }
@@ -266,8 +340,9 @@ export default {
 .login-wrapper {
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: 20px 0;
   border-radius: 10px;
   background: linear-gradient(135deg, #27253f, #605a6d);
 }
@@ -275,7 +350,6 @@ export default {
 .login-container {
   width: 900px;
   max-width: 95%;
-  height: 650px;
   background: #ffffff;
   display: flex;
   border-radius: 12px;
@@ -380,5 +454,79 @@ input[type="date"]:focus {
 .col-6 {
   display: flex;
   justify-content: center;
+}
+
+/* OFFSPRING (birth event) */
+.offspring-section {
+  background: #f6f4ff;
+  border: 1px solid #d9d3ff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 15px;
+}
+.offspring-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #6a5cff;
+}
+.num-born {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.num-born label {
+  margin: 0;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.num-born input {
+  width: 70px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  border: 1px solid #ddd;
+  font-size: 13px;
+  text-align: center;
+}
+.offspring-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px dashed #d9d3ff;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.offspring-row .calf-num {
+  flex: 0 0 32px;
+  font-weight: 700;
+  color: #6a5cff;
+  font-size: 13px;
+}
+.offspring-row .calf-tag,
+.offspring-row .calf-sex,
+.offspring-row .calf-name {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 16px;
+  border: 1px solid #ddd;
+  outline: none;
+  font-size: 13px;
+  color: #444;
+  background: #fff;
+}
+.offspring-row .calf-sex { flex: 0 0 110px; }
+.offspring-row .calf-tag:focus,
+.offspring-row .calf-sex:focus,
+.offspring-row .calf-name:focus {
+  border-color: #6a5cff;
+}
+.warning-text {
+  display: block;
+  color: #c0392b;
+  font-size: 12px;
+  margin-bottom: 8px;
 }
 </style>

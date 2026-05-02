@@ -408,11 +408,6 @@ export default {
 }
 .stat-count { font-weight: bold; color: #fff; }
 
-/* Table */
-table { color: #e0e0e0; }
-thead { background: rgba(255,255,255,0.08); }
-th { color: rgba(255,255,255,0.7); }
-
 .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: #fff; }
 .badge-paid { background: #2e7d32; }
 .badge-unpaid { background: #e65100; }

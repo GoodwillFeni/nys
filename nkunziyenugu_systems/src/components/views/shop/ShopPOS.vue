@@ -500,10 +500,6 @@ export default {
   border-radius: 8px;
 }
 
-.table {
-  color: #fff;
-  background: transparent;
-}
 
 .table th,
 .table td {

@@ -17,6 +17,7 @@ class FarmAnimal extends Model
         'farm_id',
         'animal_type_id',
         'breed_id',
+        'mother_id',
         'animal_tag',
         'farm_tag',
         'sex',
@@ -58,7 +59,19 @@ class FarmAnimal extends Model
         // Only return active links
         return $this->hasMany(AnimalDeviceLink::class, 'animal_id')
                     ->where('deleted', '!=', 1)
-                    ->with('device'); 
+                    ->with('device');
+    }
+
+    /** Birth lineage — added 2026-05-02. */
+    public function mother()
+    {
+        return $this->belongsTo(FarmAnimal::class, 'mother_id');
+    }
+
+    /** All offspring of this animal (only meaningful for females). */
+    public function offspring()
+    {
+        return $this->hasMany(FarmAnimal::class, 'mother_id');
     }
 
     protected static function booted()

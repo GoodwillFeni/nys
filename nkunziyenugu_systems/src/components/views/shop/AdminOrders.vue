@@ -403,10 +403,6 @@ export default {
 
 .page-info { color: rgba(255,255,255,0.7); display: flex; align-items: center; font-size: 13px; }
 
-.table { color: #fff; background: transparent; }
-.table th, .table td { color: #fff; padding: 8px 4px; font-size: 13px; }
-.table > :not(caption) > * > * { background-color: transparent !important; color: #fff !important; }
-
 .form-control { background: rgba(255,255,255,0.08) !important; border: 1px solid rgba(255,255,255,0.18) !important; color: #fff !important; }
 .form-control option { background: #27253f; color: #fff; }
 

@@ -11,9 +11,16 @@
           </select>
           <input type="date" v-model="filters.from" class="form-control-sm" style="width: 160px" @change="loadReport" />
           <input type="date" v-model="filters.to" class="form-control-sm" style="width: 160px" @change="loadReport" />
+          <button type="button" class="button-info button-sm" @click="resetToLifetime">Lifetime</button>
           <button type="button" class="button-warning" @click="$router.back()">Back</button>
         </div>
       </div>
+      <p class="period-hint" v-if="report">
+        Showing
+        <strong v-if="report.period.lifetime">lifetime totals</strong>
+        <strong v-else>{{ report.period.from || 'start' }} to {{ report.period.to || 'today' }}</strong>
+        — clear the dates to see lifetime.
+      </p>
     </div>
 
     <!-- Operating P&L -->
@@ -36,20 +43,31 @@
       </div>
     </div>
 
-    <!-- Capital -->
+    <!-- Natural increase + Capital -->
     <div class="summary-row" v-if="report">
+      <div class="summary-card birth-card">
+        <span class="label">Natural Increase (Birth Value)</span>
+        <span class="value">R{{ fmt(report.natural_increase ? report.natural_increase.birth_value : report.capital.birth_value) }}</span>
+      </div>
       <div class="summary-card investment-card">
         <span class="label">Capital Investment</span>
         <span class="value">R{{ fmt(report.capital.investment) }}</span>
       </div>
-      <div class="summary-card birth-card">
-        <span class="label">Birth Asset Value</span>
-        <span class="value">R{{ fmt(report.capital.birth_value) }}</span>
+      <div class="summary-card equity-card">
+        <span class="label">Total Equity Change</span>
+        <span class="value">R{{ fmt(report.total_equity_change) }}</span>
       </div>
     </div>
 
-    <!-- Two-column breakdown -->
-    <div class="breakdown-grid" v-if="report">
+    <!-- Detail toggle -->
+    <div class="detail-toggle" v-if="report">
+      <button type="button" class="button-info button-sm" @click="toggleDetail">
+        {{ showDetail ? 'Hide details' : 'Show details' }}
+      </button>
+    </div>
+
+    <!-- Two-column breakdown (only loaded on demand) -->
+    <div class="breakdown-grid" v-if="report && showDetail">
 
       <!-- Animal Events -->
       <div class="breakdown-section">
@@ -63,7 +81,7 @@
           <div class="mini-card"><span>Investment</span><span class="purple">R{{ fmt(report.animal_events.investment) }}</span></div>
         </div>
 
-        <table v-if="report.animal_events.breakdown.length > 0">
+        <table v-if="report.animal_events.breakdown && report.animal_events.breakdown.length > 0">
           <thead>
             <tr><th>Event Type</th><th>Cost Type</th><th>Count</th><th>Total</th></tr>
           </thead>
@@ -88,7 +106,7 @@
           <div class="mini-card"><span>Loss</span><span class="red">R{{ fmt(report.inventory.loss) }}</span></div>
         </div>
 
-        <table v-if="report.inventory.breakdown.length > 0">
+        <table v-if="report.inventory.breakdown && report.inventory.breakdown.length > 0">
           <thead>
             <tr><th>Category</th><th>Type</th><th>Count</th><th>Total</th></tr>
           </thead>
@@ -105,11 +123,6 @@
       </div>
 
     </div>
-
-    <!-- Period info -->
-    <p class="period-info" v-if="report">
-      Report period: {{ report.period.from }} to {{ report.period.to }}
-    </p>
   </div>
 </template>
 
@@ -125,6 +138,7 @@ export default {
     return {
       farms: [],
       report: null,
+      showDetail: false,
       filters: {
         farm_id: '',
         from: '',
@@ -134,10 +148,7 @@ export default {
   },
 
   mounted() {
-    const today = new Date();
-    this.filters.to = today.toISOString().slice(0, 10);
-    // Default to start of current month
-    this.filters.from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+    // Default: show LIFETIME totals (no date filter). User clicks dates to drill in.
     this.loadFarms();
     this.loadReport();
   },
@@ -156,12 +167,26 @@ export default {
         if (this.filters.farm_id) params.farm_id = this.filters.farm_id;
         if (this.filters.from) params.from = this.filters.from;
         if (this.filters.to) params.to = this.filters.to;
+        if (this.showDetail) params.detail = 1;
 
         const res = await api.get('/farm/reports/pnl', { params });
         this.report = res.data;
       } catch (e) {
         toast.error('Failed to load report');
       }
+    },
+
+    async toggleDetail() {
+      this.showDetail = !this.showDetail;
+      if (this.showDetail && (!this.report?.animal_events?.breakdown)) {
+        await this.loadReport();
+      }
+    },
+
+    resetToLifetime() {
+      this.filters.from = '';
+      this.filters.to = '';
+      this.loadReport();
     },
 
     fmt(val) {
@@ -176,6 +201,40 @@ export default {
   background: linear-gradient(135deg, #27253f, #605a6d);
   color: #fff;
   border-radius: 8px;
+}
+
+/* Header filter inputs — match the dark gradient card */
+.card .form-control-sm,
+.card input[type="date"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  height: 34px;
+}
+.card .form-control-sm:focus,
+.card input[type="date"]:focus {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: #6a5cff;
+  outline: none;
+  box-shadow: none;
+}
+.card input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+  cursor: pointer;
+}
+.card input[type="date"]::-webkit-datetime-edit-text,
+.card input[type="date"]::-webkit-datetime-edit-month-field,
+.card input[type="date"]::-webkit-datetime-edit-day-field,
+.card input[type="date"]::-webkit-datetime-edit-year-field {
+  color: #fff;
+}
+.card select.form-control-sm option {
+  background: #27253f;
+  color: #fff;
 }
 
 
@@ -212,6 +271,11 @@ export default {
 .investment-card .value { color: #6a1b9a; }
 .birth-card { border-top-color: #1565c0; }
 .birth-card .value { color: #1565c0; }
+.equity-card { border-top-color: #2e7d32; }
+.equity-card .value { color: #2e7d32; }
+
+.period-hint { font-size: 12px; color: rgba(255,255,255,0.7); margin: 8px 0 0; }
+.detail-toggle { margin-bottom: 12px; }
 
 .breakdown-grid {
   display: grid;

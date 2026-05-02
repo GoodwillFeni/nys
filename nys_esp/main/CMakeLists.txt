@@ -13,6 +13,5 @@ idf_component_register(
         wifi
         gps
         input
-        web
         ble_cfg
 )

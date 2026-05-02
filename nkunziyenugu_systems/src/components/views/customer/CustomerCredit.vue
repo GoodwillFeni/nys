@@ -120,13 +120,4 @@ export default {
   border-radius: 8px;
 }
 
-.table {
-  color: #fff;
-  background: transparent;
-}
-
-.table > :not(caption) > * > * {
-  background-color: transparent !important;
-  color: #fff !important;
-}
 </style>

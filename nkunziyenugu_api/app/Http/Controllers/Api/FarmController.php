@@ -141,37 +141,32 @@ class FarmController extends Controller
         $inventoryItems = InventoryItem::where('account_id', $accountId)->where('deleted', 0)->get();
         $lowStockCount = $inventoryItems->filter(fn($item) => $item->low_stock)->count();
 
-        // P&L for current month
-        $from = now()->startOfMonth()->toDateString();
-        $to = now()->toDateString();
-
-        $eventPnl = FarmAnimalEvent::where('account_id', $accountId)
-            ->where('deleted', 0)
-            ->whereBetween('event_date', [$from, $to])
-            ->selectRaw("
-                SUM(CASE WHEN cost_type IN ('income','birth') THEN cost ELSE 0 END) as income,
-                SUM(CASE WHEN cost_type IN ('expense','running') THEN cost ELSE 0 END) as expense,
-                SUM(CASE WHEN cost_type = 'loss' THEN cost ELSE 0 END) as loss,
-                SUM(CASE WHEN cost_type = 'investment' THEN cost ELSE 0 END) as investment
-            ")
+        // P&L for current month — read from rollup (kept fresh by PnlMonthlyObserver)
+        $now = now();
+        $rollupRow = \App\Models\FarmPnlMonthly::query()
+            ->where('account_id', $accountId)
+            ->where('year', $now->year)
+            ->where('month', $now->month)
+            ->selectRaw('
+                COALESCE(SUM(events_income),     0) AS events_income,
+                COALESCE(SUM(events_expense),    0) AS events_expense,
+                COALESCE(SUM(events_running),    0) AS events_running,
+                COALESCE(SUM(events_loss),       0) AS events_loss,
+                COALESCE(SUM(events_birth),      0) AS events_birth,
+                COALESCE(SUM(events_investment), 0) AS events_investment,
+                COALESCE(SUM(tx_income),         0) AS tx_income,
+                COALESCE(SUM(tx_expense),        0) AS tx_expense,
+                COALESCE(SUM(tx_loss),           0) AS tx_loss
+            ')
             ->first();
 
-        // Inventory transactions for current month
-        $txPnl = FarmTransaction::where('account_id', $accountId)
-            ->where('deleted', 0)
-            ->whereBetween('transaction_date', [$from, $to])
-            ->selectRaw("
-                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-                SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-                SUM(CASE WHEN type = 'loss' THEN amount ELSE 0 END) as loss
-            ")
-            ->first();
-
-        $monthIncome = round(($eventPnl->income ?? 0) + ($txPnl->income ?? 0), 2);
-        $monthExpense = round(($eventPnl->expense ?? 0) + ($txPnl->expense ?? 0), 2);
-        $monthLoss = round(($eventPnl->loss ?? 0) + ($txPnl->loss ?? 0), 2);
-        $monthInvestment = round($eventPnl->investment ?? 0, 2);
-        $monthProfit = round($monthIncome - $monthExpense - $monthLoss, 2);
+        $monthIncome     = round((float) $rollupRow->events_income + (float) $rollupRow->tx_income, 2);
+        $monthExpense    = round((float) $rollupRow->events_expense + (float) $rollupRow->events_running + (float) $rollupRow->tx_expense, 2);
+        $monthLoss       = round((float) $rollupRow->events_loss + (float) $rollupRow->tx_loss, 2);
+        $monthInvestment = round((float) $rollupRow->events_investment, 2);
+        $monthProfit     = round($monthIncome - $monthExpense - $monthLoss, 2);
+        $from = $now->startOfMonth()->toDateString();
+        $to   = $now->endOfMonth()->toDateString();
 
         // Recent events (last 10)
         $recentEvents = FarmAnimalEvent::with(['animal:id,animal_tag,animal_name', 'farm:id,name'])

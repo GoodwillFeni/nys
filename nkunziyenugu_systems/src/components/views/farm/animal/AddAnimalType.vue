@@ -33,7 +33,22 @@
           <div class="input-group">
             <input type="text" v-model="form.description" placeholder="Enter animal description for easy identification" required />
           </div>
-          
+
+          <div class="input-group">
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              v-model.number="form.default_birth_value"
+              placeholder="Default birth value (R) — used to value newborns of this type"
+            />
+            <small class="hint">
+              The system uses this as the cost for each newborn when you log a Birth event.
+              Set it to the typical market value of a calf/lamb of this type (e.g. 1400 for cattle, 400 for sheep).
+              Leave at 0 to enter the cost manually each time.
+            </small>
+          </div>
+
           <div class="row">
             <div class="col-3" >
                 <button type="submit" :disabled="loading" class="button-info">
@@ -70,6 +85,7 @@ export default {
             account_id: '',
             farm_id: '',
             description: '',
+            default_birth_value: 0,
         }
     }
   },
@@ -123,10 +139,11 @@ export default {
         await api.post('farm/animals/types', {
           name: this.form.animal_type_name,
           description: this.form.description,
+          default_birth_value: this.form.default_birth_value || 0,
         });
 
         toast.success('Animal type added successfully!');
-        this.$router.back();
+        this.$router.push({ name: 'AnimalTypeList' });
       } catch (error) {
         console.log(error.response?.data?.message)
         toast.error(error.response?.data?.message || 'Failed to add animal type');
@@ -257,5 +274,13 @@ input[type="date"]:focus {
 .col-6 {
   display: flex;
   justify-content: center;
+}
+
+.hint {
+  display: block;
+  margin: 6px 14px 0;
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
 }
 </style>

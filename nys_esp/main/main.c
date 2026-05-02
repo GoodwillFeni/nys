@@ -17,7 +17,6 @@
 #include "../components/wifi/wifi.h"
 #include "../components/gps/gps.h"
 #include "../components/input/input.h"
-#include "../components/web/web_server.h"
 #include "../components/ble_cfg/ble_cfg.h"
 
 extern nys_cfg_t s_cfg;
@@ -83,11 +82,8 @@ static bool ds_wifi_connect(void)
     int net_count = cfg_load_networks(nets);
 
     if (net_count == 0 || nets[0].ssid[0] == 0) {
-        // No networks — start AP so user can configure
-        ESP_LOGW(TAG, "No saved networks — starting AP for config");
-        wifi_ensure_inited(true, true);
-        wifi_auto_connect_on_boot();
-        web_start_server();
+        // No networks — wait so user can configure via BLE
+        ESP_LOGW(TAG, "No saved networks — staying awake for BLE config");
         vTaskDelay(pdMS_TO_TICKS(NYS_AP_WINDOW_MS));
         return false;
     }
@@ -120,6 +116,31 @@ static void ds_enter_sleep(void)
     uint32_t sleep_s = s_cfg.location_interval_s > 0
                      ? s_cfg.location_interval_s
                      : NYS_DEEP_SLEEP_DEFAULT_S;
+
+    // Hold awake so a phone has time to discover + connect + write config over BLE.
+    // If the user writes the COMMIT characteristic, ble_cfg.c calls esp_restart()
+    // and we never reach the actual sleep call.
+    //
+    // - Wait at least NYS_BLE_WAKE_WINDOW_MS for someone to connect.
+    // - If a peer connects during the window, KEEP waiting (poll every 1s)
+    //   until they disconnect, capped at NYS_BLE_MAX_HOLD_MS to prevent
+    //   indefinite battery drain if a peer never disconnects cleanly.
+    ESP_LOGI(TAG, "Pre-sleep BLE window: %dms (extend if peer connects)", NYS_BLE_WAKE_WINDOW_MS);
+    int waited_ms = 0;
+    bool was_connected = false;
+    while (waited_ms < NYS_BLE_MAX_HOLD_MS) {
+        bool connected = ble_cfg_peer_connected();
+        if (!connected && waited_ms >= NYS_BLE_WAKE_WINDOW_MS) break;
+        if (connected && !was_connected) {
+            ESP_LOGI(TAG, "BLE peer connected — deferring sleep until disconnect");
+            was_connected = true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        waited_ms += 1000;
+    }
+    if (was_connected) {
+        ESP_LOGI(TAG, "BLE peer gone, proceeding to sleep (held %ds)", waited_ms / 1000);
+    }
 
     gpio_set_level(LED_GPIO, LED_OFF);
 
@@ -310,7 +331,6 @@ static void always_on_flow(void)
     }
 
     sender_start_task();
-    web_start_server();
 
     // Start BLE config server (coexists with WiFi)
     if (ble_cfg_init(&s_cfg) != ESP_OK) {
@@ -346,7 +366,8 @@ void app_main(void)
     // ── System init ───────────────────────────────────────────────────────────
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_log_level_set("HTTP_CLIENT", ESP_LOG_WARN);
+    esp_log_level_set("HTTP_CLIENT", ESP_LOG_ERROR); // hide harmless "incomplete chunked" warning from php artisan serve
+    esp_log_level_set("wifi", ESP_LOG_WARN);          // hide beacon-interval / scan chatter
 
     // ── Config & identity ─────────────────────────────────────────────────────
     (void)cfg_load(&s_cfg);

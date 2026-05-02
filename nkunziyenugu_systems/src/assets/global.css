@@ -81,6 +81,12 @@
     background: linear-gradient(135deg, #7568f0, #392dad);
     color: #e9e6ff;
 }
+
+/* Size modifiers — use alongside any .button-* class.
+   IMPORTANT: All buttons MUST use a global .button-* class. Do not redefine
+   button styles in scoped Vue CSS — it breaks visual consistency. */
+.button-sm { padding: 3px 8px; font-size: 13px; }
+.button-lg { padding: 8px 16px; font-size: 17px; }
 /* End Global button styling */
 
 .text-muted {
@@ -90,28 +96,56 @@
 }
 
 
-table {
-  width: 99%;
+/* ── Canonical NYS table ──────────────────────────────────────
+   Every table in the app uses this. The `.table` class is included
+   so Bootstrap-styled tables get the same look without HTML changes.
+   Do not redefine table styling in scoped Vue CSS — it breaks visual
+   consistency across the app. */
+table, .table {
+  width: 100%;
   border-collapse: collapse;
-  background: linear-gradient(135deg, #27253f, #605a6d);
+  background: linear-gradient(135deg, #27253f, #605a6d) !important;
+  color: #fff !important;
+  margin: 0;
+  /* Override Bootstrap 5's CSS variables so its `:not(caption) > * > *`
+     rule produces the right colors instead of black-on-white. */
+  --bs-table-color: #fff;
+  --bs-table-bg: transparent;
+  --bs-table-border-color: rgba(255, 255, 255, 0.18);
+  --bs-table-striped-color: #fff;
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.03);
+  --bs-table-hover-color: #fff;
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.06);
+}
+table th, .table th,
+table td, .table td {
+  padding: 10px !important;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   color: #fff;
-  margin-left: 5px;
 }
-
-table th {
-  padding: 8px;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-table td {
-  /* padding: 1px; */
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
- th {
-  background: rgba(0, 0, 0, 0.2);
+table th, .table th {
+  background: rgba(0, 0, 0, 0.25) !important;
   font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+table tbody tr:hover, .table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+/* Bootstrap 5: cells get their bg/color from this selector — beat it. */
+.table > :not(caption) > * > *,
+.table > thead > tr > *,
+.table > tbody > tr > * {
+  background-color: transparent !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+.table > thead > tr > * {
+  color: rgba(255, 255, 255, 0.8) !important;
+  background-color: rgba(0, 0, 0, 0.25) !important;
 }
 
 label {

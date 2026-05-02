@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { Device } from 'react-native-ble-plx';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { bleManager } from '../../components/ble/BLEManager';
 import { ConfigForm, ConfigFormValues } from '../../components/ble/ConfigForm';
@@ -13,31 +12,41 @@ export function BLEConfigScreen() {
   const route = useRoute<Rte>();
   const nav = useNavigation();
   const { deviceId, deviceName, deviceUid } = route.params;
-  const [device, setDevice] = useState<Device | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Initial connect just to verify the device responds + cache services.
+  // The actual write flow does its own ensureConnected() so a stale link
+  // doesn't matter here.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const d = await bleManager.connect(deviceId);
-        setDevice(d);
+        await bleManager.connect(deviceId);
       } catch (e: any) {
-        Alert.alert('Connection failed', e.message ?? String(e), [
-          { text: 'OK', onPress: () => nav.goBack() },
-        ]);
+        if (!cancelled) {
+          Alert.alert('Connection failed', e.message ?? String(e), [
+            { text: 'OK', onPress: () => nav.goBack() },
+          ]);
+        }
       } finally {
-        setConnecting(false);
+        if (!cancelled) setConnecting(false);
       }
     })();
-    return () => { bleManager.disconnect(deviceId); };
+    return () => {
+      cancelled = true;
+      bleManager.disconnect(deviceId);
+    };
   }, [deviceId, nav]);
 
   const onSubmit = async (vals: ConfigFormValues) => {
-    if (!device) return;
     setSubmitting(true);
     try {
-      await writeNYSConfig(device, {
+      // Always reconnect fresh — guarantees a non-stale GATT handle, so
+      // writes never fail with "Service ... for device ? not found".
+      await bleManager.ensureConnected(deviceId);
+
+      await writeNYSConfig(deviceId, {
         ssid: vals.ssid || undefined,
         password: vals.password || undefined,
         api_url: vals.api_url || undefined,
@@ -45,7 +54,7 @@ export function BLEConfigScreen() {
         location_interval_s: vals.location_interval_s ? Number(vals.location_interval_s) : undefined,
         input1_desc: vals.input1_desc || undefined,
       });
-      await commitConfig(device);
+      await commitConfig(deviceId);
       Alert.alert('Success', 'Device is restarting with the new configuration.', [
         { text: 'OK', onPress: () => nav.goBack() },
       ]);
@@ -60,7 +69,7 @@ export function BLEConfigScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#2a6ef2" />
-        <Text style={styles.hint}>Connecting to {deviceName}\u2026</Text>
+        <Text style={styles.hint}>Connecting to {deviceName}{'…'}</Text>
       </View>
     );
   }

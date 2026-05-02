@@ -35,7 +35,7 @@
       <div class="section-card" v-if="d.has_farm">
         <div class="section-header">
           <h5><i class="bi bi-tree"></i> Farm Overview</h5>
-          <button class="button-info btn-sm" @click="$router.push({ name: 'FarmDashboard' })">View</button>
+          <button class="button-info button-sm" @click="$router.push({ name: 'FarmDashboard' })">View</button>
         </div>
 
         <div class="mini-stats">
@@ -73,7 +73,7 @@
       <div class="section-card" v-if="d.has_shop">
         <div class="section-header">
           <h5><i class="bi bi-cart3"></i> Shop Overview</h5>
-          <button class="button-info btn-sm" @click="$router.push({ name: 'ShopDashboard' })">View</button>
+          <button class="button-info button-sm" @click="$router.push({ name: 'ShopDashboard' })">View</button>
         </div>
 
         <div class="mini-stats">
@@ -306,12 +306,6 @@ export default {
 .pnl-label { font-size: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
 .pnl-item span:last-child { font-size: 15px; font-weight: bold; }
 
-/* Table */
-table { color: #e0e0e0; width: 100%; }
-thead { background: rgba(255,255,255,0.08); }
-th { color: rgba(255,255,255,0.7); padding: 8px; text-align: left; }
-td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-
 .badge { padding: 3px 8px; border-radius: 12px; font-size: 11px; color: #fff; }
 .badge-action { background: #546e7a; }
 
@@ -325,7 +319,6 @@ td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .empty-state h5 { color: #fff; margin-bottom: 8px; }
 .empty-state p { color: rgba(255,255,255,0.5); margin-bottom: 16px; }
 
-.btn-sm { padding: 4px 10px; font-size: 12px; }
 .mt-3 { margin-top: 16px; }
 .justify-content-center { justify-content: center; }
 </style>

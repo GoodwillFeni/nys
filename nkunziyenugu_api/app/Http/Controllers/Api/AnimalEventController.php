@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\FarmAnimal;
 use App\Models\FarmAnimalEvent;
@@ -20,7 +21,24 @@ class AnimalEventController extends Controller
             'animal_id' => 'required',
             'event_type' => 'required',
             'event_date' => 'required|date',
+            // Birth-only: list of new offspring to auto-create. Optional.
+            'offspring' => 'nullable|array',
+            // Tag is optional — newborns often aren't tagged at birth. Auto-generated below.
+            'offspring.*.animal_tag' => 'nullable|string|max:50',
+            'offspring.*.sex' => 'required_with:offspring|string|in:Male,Female,Unknown',
+            'offspring.*.breed_id' => 'nullable|integer|exists:farm_animal_breeds,id',
+            'offspring.*.animal_name' => 'nullable|string|max:150',
+            'offspring.*.notes' => 'nullable|string',
         ]);
+
+        // Birth is identified by cost_type='birth' (not event_type text — users
+        // type things like "New Female" or "New calf" in event_type, but the
+        // dropdown they pick is what tells us this is a natural-increase entry).
+        $isBirth = strtolower((string) $req->input('cost_type', '')) === 'birth';
+
+        if ($isBirth) {
+            return $this->storeBirthEvent($req);
+        }
 
         $event = FarmAnimalEvent::create([
             'account_id' => $req->account_id,
@@ -41,6 +59,113 @@ class AnimalEventController extends Controller
         );
 
         return response()->json($event);
+    }
+
+    /**
+     * Birth-event special path: validate the mother is Female, auto-create
+     * each offspring with mother_id linked, auto-fill cost from animal type's
+     * default_birth_value, and force cost_type='birth' so the natural-increase
+     * P&L line picks it up correctly.
+     */
+    protected function storeBirthEvent(Request $req)
+    {
+        \Log::info('storeBirthEvent triggered', [
+            'animal_id' => $req->animal_id,
+            'event_type' => $req->event_type,
+            'offspring_count' => count($req->input('offspring', [])),
+            'cost_raw' => $req->input('cost'),
+        ]);
+
+        $mother = FarmAnimal::with('animalType')->find($req->animal_id);
+        if (!$mother) {
+            return response()->json(['status' => 'error', 'message' => 'Mother animal not found'], 404);
+        }
+        if (strcasecmp((string) $mother->sex, 'Female') !== 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Birth events can only be recorded on a Female animal. ' .
+                             "Animal #{$mother->animal_tag} is sex='{$mother->sex}'.",
+            ], 422);
+        }
+
+        $offspring = $req->input('offspring', []);
+        if (empty($offspring)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Birth event needs at least one offspring (number born + tag + sex).',
+            ], 422);
+        }
+        $count = count($offspring);
+
+        // Auto-fill cost when user didn't enter one. Treat 0 as "use the
+        // animal type's default" — the form initializes cost=0, so an explicit
+        // zero usually means the user didn't change it.
+        $rawCost = $req->input('cost');
+        $userProvidedCost = ($rawCost !== null && $rawCost !== '' && (float) $rawCost > 0);
+        if (!$userProvidedCost) {
+            $perOffspring = (float) ($mother->animalType?->default_birth_value ?? 0);
+            $cost = $perOffspring * $count;
+        } else {
+            $cost = (float) $rawCost;
+        }
+
+        return DB::transaction(function () use ($req, $mother, $offspring, $count, $cost) {
+            $meta = $req->input('meta', []);
+            if (!is_array($meta)) $meta = [];
+            $meta['offspring_count'] = $count;
+
+            $event = FarmAnimalEvent::create([
+                'account_id' => $req->account_id,
+                'farm_id'    => $req->farm_id,
+                'animal_id'  => $req->animal_id,
+                'event_type' => $req->event_type,
+                'event_date' => $req->event_date,
+                'cost'       => $cost,
+                'cost_type'  => 'birth', // always 'birth' for natural-increase tracking
+                'meta'       => $meta,
+            ]);
+
+            $created = [];
+            $seq = 0;
+            foreach ($offspring as $o) {
+                $seq++;
+                $tag = trim((string) ($o['animal_tag'] ?? ''));
+                if ($tag === '') {
+                    // Newborn not tagged yet — generate placeholder marker.
+                    // Format "NB-{event_id}-{n}" is unique (event id is unique)
+                    // and clearly signals "this animal still needs a real tag".
+                    $tag = "NB-{$event->id}-{$seq}";
+                }
+
+                $created[] = FarmAnimal::create([
+                    'account_id'     => $req->account_id,
+                    'farm_id'        => $req->farm_id,
+                    'animal_type_id' => $mother->animal_type_id,
+                    'breed_id'       => $o['breed_id'] ?? $mother->breed_id,
+                    'mother_id'      => $mother->id,
+                    'animal_tag'     => $tag,
+                    'farm_tag'       => $tag,
+                    'sex'            => $o['sex'],
+                    'date_of_birth'  => $req->event_date,
+                    'animal_name'    => $o['animal_name'] ?? null,
+                    'status'         => 'Active',  // capital A — matches enum the existing rows use
+                    'notes'          => $o['notes'] ?? null,
+                ]);
+            }
+
+            AuditLogService::logCreate(
+                $event,
+                $req,
+                "Created birth event for animal #{$mother->animal_tag} (" . count($created) . ' offspring, cost R' . number_format($cost, 2) . ')'
+            );
+
+            return response()->json([
+                'status'    => 'success',
+                'event'     => $event,
+                'offspring' => $created,
+                'cost'      => $cost,
+            ]);
+        });
     }
 
     // BULK EVENT
