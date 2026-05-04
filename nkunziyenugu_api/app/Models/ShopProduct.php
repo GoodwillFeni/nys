@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
+use App\Traits\SoftDeletesViaFlag;
 use Illuminate\Database\Eloquent\Model;
 
 class ShopProduct extends Model
 {
+    use BelongsToAccount, SoftDeletesViaFlag;
+
     protected $table = 'shop_products';
 
     protected $fillable = [

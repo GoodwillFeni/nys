@@ -1,11 +1,19 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Traits;
 
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
-class ShopBaseController extends Controller
+/**
+ * Resolves the active account for the request and verifies the authenticated
+ * user actually belongs to it. The header X-Account-ID is the only trusted
+ * source — request body / query string can be set by the client and must
+ * never be used to determine ownership.
+ *
+ * Mirrors the helpers on ShopBaseController so non-shop controllers can opt
+ * in without inheriting from a shop-specific base.
+ */
+trait ResolvesAccount
 {
     protected function requireActiveAccountId(Request $request): int
     {
@@ -21,10 +29,6 @@ class ShopBaseController extends Controller
         return $accountId;
     }
 
-    /**
-     * Does the user belong to (or can access) this account at all?
-     * Super admins always do.
-     */
     protected function userHasAccountAccess(Request $request, int $accountId): bool
     {
         $user = $request->user();
@@ -44,5 +48,16 @@ class ShopBaseController extends Controller
                 'message' => 'You do not have access to this account',
             ], 403));
         }
+    }
+
+    /**
+     * Convenience: header-derive AND verify membership in one call. The
+     * canonical entry point for any controller that needs the active account.
+     */
+    protected function resolveAccountId(Request $request): int
+    {
+        $accountId = $this->requireActiveAccountId($request);
+        $this->requireAccountAccess($request, $accountId);
+        return $accountId;
     }
 }

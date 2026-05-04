@@ -26,11 +26,14 @@ use App\Http\Controllers\Api\FarmReportController;
 use App\Http\Controllers\Api\ShopDashboardController;
 use App\Http\Controllers\Api\DashboardController;
 
-// Public
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
-Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']);
+// Public auth — rate-limited to 5 attempts/min/IP. Laravel returns 429 +
+// Retry-After header automatically.
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/register',        [AuthController::class, 'register']);
+    Route::post('/login',           [AuthController::class, 'login']);
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
+    Route::post('/reset-password',  [PasswordResetController::class, 'resetPassword']);
+});
 Route::post('/devices/ingest', [DeviceIngestController::class, 'store'])->middleware('device_auth');
 Route::post('/device/message', [DeviceMessageController::class, 'store']);
 

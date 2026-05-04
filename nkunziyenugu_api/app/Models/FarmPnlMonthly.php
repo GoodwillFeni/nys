@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class FarmPnlMonthly extends Model
 {
+    use BelongsToAccount;
+
     protected $table = 'farm_pnl_monthly';
 
     protected $fillable = [

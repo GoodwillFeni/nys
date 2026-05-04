@@ -17,10 +17,6 @@ class ShopCustomerController extends ShopBaseController
         $accountId = $this->requireActiveAccountId($request);
         $this->requireAccountAccess($request, $accountId);
 
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
-
         $search = trim((string) $request->get('search', ''));
 
         $q = ShopCustomer::query()
@@ -44,10 +40,6 @@ class ShopCustomerController extends ShopBaseController
     {
         $accountId = $this->requireActiveAccountId($request);
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         $request->validate([
             'name' => 'required|string|max:255',

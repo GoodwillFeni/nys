@@ -13,10 +13,6 @@ class ShopCreditRequestController extends ShopBaseController
         $accountId = $this->requireActiveAccountId($request);
         $this->requireAccountAccess($request, $accountId);
 
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
-
         $status = $request->get('status');
 
         $q = ShopCreditRequest::with(['customer', 'reviewedBy'])
@@ -35,10 +31,6 @@ class ShopCreditRequestController extends ShopBaseController
     {
         $accountId = $this->requireActiveAccountId($request);
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         if ((int) $creditRequest->account_id !== $accountId) {
             return response()->json(['status' => 'error', 'message' => 'Not found'], 404);
@@ -69,10 +61,6 @@ class ShopCreditRequestController extends ShopBaseController
     {
         $accountId = $this->requireActiveAccountId($request);
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         if ((int) $creditRequest->account_id !== $accountId) {
             return response()->json(['status' => 'error', 'message' => 'Not found'], 404);

@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ShopOrderController extends ShopBaseController
 {
@@ -129,10 +130,6 @@ class ShopOrderController extends ShopBaseController
     public function adminIndex(Request $request)
     {
         $accountId = $this->requireActiveAccountId($request);
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['message' => 'Insufficient permissions'], 403);
-        }
-
         $query = ShopOrder::with('items.product', 'user', 'approvedBy')
             ->where('account_id', $accountId);
 
@@ -150,16 +147,12 @@ class ShopOrderController extends ShopBaseController
     public function adminUpdate(Request $request, ShopOrder $order)
     {
         $accountId = $this->requireActiveAccountId($request);
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['message' => 'Insufficient permissions'], 403);
-        }
-
         if ($order->account_id != $accountId) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
         $request->validate([
-            'status'           => 'nullable|in:approved,rejected,completed',
+            'status'           => ['nullable', Rule::in(ShopOrder::adminTransitionStatuses())],
             'rejection_reason' => 'nullable|string|max:500',
             'notes'            => 'nullable|string|max:500',
             'mark_paid'        => 'nullable|boolean',
@@ -335,9 +328,6 @@ class ShopOrderController extends ShopBaseController
     public function askCustomer(Request $request, ShopOrder $order)
     {
         $accountId = $this->requireActiveAccountId($request);
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['message' => 'Insufficient permissions'], 403);
-        }
         if ($order->account_id != $accountId) {
             return response()->json(['message' => 'Not found'], 404);
         }

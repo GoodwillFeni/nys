@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use App\Traits\SoftDeletesViaFlag;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
 
 class Account extends Model
 {
+    use SoftDeletesViaFlag;
+
+    protected $softDeleteColumn = 'deleted_flag';
+
     protected $fillable = [
         'name',
         'type',

@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class ShopPosSale extends Model
 {
+    use BelongsToAccount;
+
     protected $table = 'shop_pos_sales';
 
     protected $fillable = [
         'account_id',
+        'idempotency_key',
         'cashier_user_id',
         'customer_id',
         'customer_name',

@@ -18,11 +18,14 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'name'     => 'required|string|max:150',
-            'surname'  => 'required|string|max:150',
-            'email'    => 'required|email|unique:users,email',
-            'phone'    => 'nullable|string|max:50',
-            'password' => 'required|min:6'
+            'name'         => 'required|string|max:150',
+            'surname'      => 'required|string|max:150',
+            'email'        => 'required|email|unique:users,email',
+            'phone'        => 'nullable|string|max:50',
+            'password'     => 'required|min:6',
+            // Self-signup picks one of four account types. Defaults to Home
+            // for backwards compat with existing frontends that don't pass it.
+            'account_type' => 'nullable|in:Home,Farm,Shop,Other',
         ]);
 
         DB::beginTransaction();
@@ -40,7 +43,7 @@ class AuthController extends Controller
             // 2️⃣ Create account automatically
             $account = Account::create([
                 'name' => $request->name . "'s Account",
-                'type' => 'Home',
+                'type' => $request->account_type ?? 'Home',
             ]);
 
             // 3️⃣ Link user to account with full Owner permissions (all routes + all actions)
@@ -57,6 +60,7 @@ class AuthController extends Controller
                 'user_id'       => $user->id,
                 'route_access'  => json_encode($routes),
                 'action_access' => json_encode($actions),
+                'is_owner'      => true,
             ]);
 
             DB::commit();

@@ -22,7 +22,9 @@ class FarmReportController extends Controller
 {
     public function pnl(Request $request)
     {
-        $accountId = (int) ($request->account_id ?? $request->header('X-Account-ID'));
+        // Header is the only trusted source. Drop the body-read fallback so
+        // request body cannot influence which account's data is returned.
+        $accountId = (int) $request->header('X-Account-ID');
         $farmId    = $request->farm_id ? (int) $request->farm_id : null;
         $from      = $request->input('from');
         $to        = $request->input('to');
@@ -30,6 +32,14 @@ class FarmReportController extends Controller
 
         if (!$accountId) {
             return response()->json(['status' => 'error', 'message' => 'Active account not selected'], 400);
+        }
+
+        // Defence in depth: route already runs `permission:PnlReport,view`
+        // middleware. Re-check inside the controller so this endpoint stays
+        // safe even if the middleware wiring is ever changed/removed.
+        $user = $request->user();
+        if (!$user || (!($user->is_super_admin ?? false) && !$user->canDo('PnlReport', 'view', $accountId))) {
+            return response()->json(['status' => 'error', 'message' => 'Forbidden'], 403);
         }
 
         // ── Aggregate the rollup ─────────────────────────────────────────────

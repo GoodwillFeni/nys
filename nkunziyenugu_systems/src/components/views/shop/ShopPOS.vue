@@ -232,6 +232,10 @@ export default {
       paymentMethod: 'Cash',
       checkingOut: false,
       amountGiven: null,
+      // UUID per cart — sent with every checkout attempt so the backend
+      // can dedup double-clicks / retried network requests. Regenerated
+      // after a successful checkout for the next sale.
+      idempotencyKey: null,
 
       customerSearch: '',
       customerResults: [],
@@ -296,9 +300,22 @@ export default {
     }
   },
   mounted() {
+    this.idempotencyKey = this.newIdempotencyKey()
     this.refresh()
   },
   methods: {
+    newIdempotencyKey() {
+      // crypto.randomUUID() is in modern browsers; fallback for old ones.
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID()
+      }
+      // RFC4122-ish v4 fallback.
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = (Math.random() * 16) | 0
+        const v = c === 'x' ? r : (r & 0x3) | 0x8
+        return v.toString(16)
+      })
+    },
     formatMoney(v) {
       const n = Number(v)
       if (Number.isNaN(n)) return '0.00'
@@ -408,6 +425,10 @@ export default {
       }
 
       this.checkingOut = true
+      // Make sure we always have a key in flight; if a previous successful
+      // checkout reset it to null and something raced before mounted re-ran,
+      // generate a fresh one here.
+      if (!this.idempotencyKey) this.idempotencyKey = this.newIdempotencyKey()
       try {
         const selectedCustomerId = this.selectedCustomerId ? Number(this.selectedCustomerId) : null
         const res = await api.post('/shop/pos/checkout', {
@@ -415,17 +436,23 @@ export default {
           customer_id: this.paymentMethod === 'Credit' ? selectedCustomerId : null,
           payment_method: this.paymentMethod,
           amount_received: this.requiresCashAmount ? (this.amountGiven == null ? null : Number(this.amountGiven)) : null,
+          idempotency_key: this.idempotencyKey,
         })
         const saleId = res.data?.data?.id
         const isPaid = !!res.data?.data?.is_paid
+        const wasDuplicate = !!res.data?.duplicate
         this.customerName = ''
         this.customerSearch = ''
         this.customerResults = []
         this.selectedCustomerId = ''
         this.amountGiven = null
-        this.success = isPaid
-          ? `POS checkout completed${saleId ? ` (Sale #${saleId})` : ''}.`
-          : `Credit sale created${saleId ? ` (Sale #${saleId})` : ''}. Payment pending.`
+        this.success = wasDuplicate
+          ? `Duplicate request — sale #${saleId} already recorded.`
+          : (isPaid
+            ? `POS checkout completed${saleId ? ` (Sale #${saleId})` : ''}.`
+            : `Credit sale created${saleId ? ` (Sale #${saleId})` : ''}. Payment pending.`)
+        // Rotate the key for the next sale so we can't accidentally collide.
+        this.idempotencyKey = this.newIdempotencyKey()
         await this.fetchCart()
         await this.fetchProducts()
       } catch (e) {

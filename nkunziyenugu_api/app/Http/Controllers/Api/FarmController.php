@@ -71,14 +71,15 @@ class FarmController extends Controller
         $this->authorizeFarm($farm, $accountId);
 
         $request->validate([
-            'account_id' => 'sometimes|required|integer',
             'name' => 'sometimes|required|string|max:255',
             'location' => 'sometimes|nullable|string',
             'description' => 'sometimes|nullable|string',
             'is_active' => 'sometimes|boolean'
         ]);
 
-        $farm->update($request->only('account_id', 'name', 'location', 'description', 'is_active'));
+        // account_id is intentionally NOT mass-assignable here — a farm
+        // cannot migrate to another tenant via this endpoint.
+        $farm->update($request->only('name', 'location', 'description', 'is_active'));
 
         $oldValues = $farm->getOriginal();
         AuditLogService::logUpdate($farm, $oldValues, $request, "Updated farm: {$farm->name}");

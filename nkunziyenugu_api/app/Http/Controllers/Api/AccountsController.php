@@ -75,6 +75,7 @@ class AccountsController extends Controller
                 'user_id'       => $authUser->id,
                 'route_access'  => $routes,
                 'action_access' => $actions,
+                'is_owner'      => true,
             ]);
 
             DB::commit();

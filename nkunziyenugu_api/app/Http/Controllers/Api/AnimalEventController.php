@@ -6,19 +6,22 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Models\Farm;
 use App\Models\FarmAnimal;
 use App\Models\FarmAnimalEvent;
 use App\Services\AuditLogService;
+use App\Traits\ResolvesAccount;
 
 class AnimalEventController extends Controller
 {
+    use ResolvesAccount;
+
     //SINGLE EVENT
     public function storeSingle(Request $req)
     {
         $req->validate([
-            'account_id' => 'required',
-            'farm_id' => 'required',
-            'animal_id' => 'required',
+            'farm_id' => 'required|integer',
+            'animal_id' => 'required|integer',
             'event_type' => 'required',
             'event_date' => 'required|date',
             // Birth-only: list of new offspring to auto-create. Optional.
@@ -31,17 +34,21 @@ class AnimalEventController extends Controller
             'offspring.*.notes' => 'nullable|string',
         ]);
 
+        $accountId = $this->resolveAccountId($req);
+        $this->assertFarmInAccount($req->farm_id, $accountId);
+        $this->assertAnimalInAccount($req->animal_id, $accountId);
+
         // Birth is identified by cost_type='birth' (not event_type text — users
         // type things like "New Female" or "New calf" in event_type, but the
         // dropdown they pick is what tells us this is a natural-increase entry).
         $isBirth = strtolower((string) $req->input('cost_type', '')) === 'birth';
 
         if ($isBirth) {
-            return $this->storeBirthEvent($req);
+            return $this->storeBirthEvent($req, $accountId);
         }
 
         $event = FarmAnimalEvent::create([
-            'account_id' => $req->account_id,
+            'account_id' => $accountId,
             'farm_id' => $req->farm_id,
             'animal_id' => $req->animal_id,
             'event_type' => $req->event_type,
@@ -66,17 +73,23 @@ class AnimalEventController extends Controller
      * each offspring with mother_id linked, auto-fill cost from animal type's
      * default_birth_value, and force cost_type='birth' so the natural-increase
      * P&L line picks it up correctly.
+     *
+     * $accountId is supplied by the caller (already header-derived and
+     * membership-verified) — never pulled from the request body here.
      */
-    protected function storeBirthEvent(Request $req)
+    protected function storeBirthEvent(Request $req, int $accountId)
     {
         \Log::info('storeBirthEvent triggered', [
+            'account_id' => $accountId,
             'animal_id' => $req->animal_id,
             'event_type' => $req->event_type,
             'offspring_count' => count($req->input('offspring', [])),
             'cost_raw' => $req->input('cost'),
         ]);
 
-        $mother = FarmAnimal::with('animalType')->find($req->animal_id);
+        $mother = FarmAnimal::with('animalType')
+            ->where('account_id', $accountId)
+            ->find($req->animal_id);
         if (!$mother) {
             return response()->json(['status' => 'error', 'message' => 'Mother animal not found'], 404);
         }
@@ -109,13 +122,13 @@ class AnimalEventController extends Controller
             $cost = (float) $rawCost;
         }
 
-        return DB::transaction(function () use ($req, $mother, $offspring, $count, $cost) {
+        return DB::transaction(function () use ($req, $accountId, $mother, $offspring, $count, $cost) {
             $meta = $req->input('meta', []);
             if (!is_array($meta)) $meta = [];
             $meta['offspring_count'] = $count;
 
             $event = FarmAnimalEvent::create([
-                'account_id' => $req->account_id,
+                'account_id' => $accountId,
                 'farm_id'    => $req->farm_id,
                 'animal_id'  => $req->animal_id,
                 'event_type' => $req->event_type,
@@ -138,7 +151,7 @@ class AnimalEventController extends Controller
                 }
 
                 $created[] = FarmAnimal::create([
-                    'account_id'     => $req->account_id,
+                    'account_id'     => $accountId,
                     'farm_id'        => $req->farm_id,
                     'animal_type_id' => $mother->animal_type_id,
                     'breed_id'       => $o['breed_id'] ?? $mother->breed_id,
@@ -172,15 +185,20 @@ class AnimalEventController extends Controller
     public function storeBulk(Request $req)
     {
         $req->validate([
-            'account_id' => 'required',
-            'farm_id' => 'required',
+            'farm_id' => 'required|integer',
             'event_type' => 'required',
             'event_date' => 'required|date',
         ]);
 
+        $accountId = $this->resolveAccountId($req);
+        $this->assertFarmInAccount($req->farm_id, $accountId);
+
         $batchId = Str::uuid();
 
-        $animals = FarmAnimal::where('farm_id', $req->farm_id)
+        // Scope animals strictly to (account_id, farm_id) — never trust the
+        // farm_id alone, since farm ids are global.
+        $animals = FarmAnimal::where('account_id', $accountId)
+            ->where('farm_id', $req->farm_id)
             ->when($req->animal_type, function ($q) use ($req) {
                 $q->whereHas('animalType', function ($q2) use ($req) {
                     $q2->where('name', $req->animal_type);
@@ -196,7 +214,7 @@ class AnimalEventController extends Controller
 
         foreach ($animals as $animal) {
             $rows[] = [
-                'account_id' => $req->account_id,
+                'account_id' => $accountId,
                 'farm_id' => $req->farm_id,
                 'animal_id' => $animal->id,
                 'event_type' => $req->event_type,
@@ -320,22 +338,49 @@ class AnimalEventController extends Controller
     // DASHBOARD
     public function dashboard(Request $req)
     {
+        $accountId = $this->resolveAccountId($req);
+
         $data = [
-            'income' => FarmAnimalEvent::where('deleted', 0)
+            'income' => FarmAnimalEvent::where('account_id', $accountId)
+                ->where('deleted', 0)
                 ->where('cost_type', 'income')
                 ->sum('cost'),
 
-            'expenses' => FarmAnimalEvent::where('deleted', 0)
+            'expenses' => FarmAnimalEvent::where('account_id', $accountId)
+                ->where('deleted', 0)
                 ->whereIn('cost_type', ['expense','running','loss'])
                 ->sum('cost'),
 
-            'by_event' => FarmAnimalEvent::where('deleted', 0)
+            'by_event' => FarmAnimalEvent::where('account_id', $accountId)
+                ->where('deleted', 0)
                 ->selectRaw('event_type, SUM(cost) as total')
                 ->groupBy('event_type')
                 ->get()
         ];
 
         return $data;
+    }
+
+    /**
+     * Belt-and-braces guards used by storeSingle/storeBulk: never let the
+     * client point a write at a farm or animal that isn't theirs by passing
+     * a foreign id alongside their own X-Account-ID.
+     */
+    private function assertFarmInAccount($farmId, int $accountId): void
+    {
+        $ok = Farm::where('id', $farmId)
+            ->where('account_id', $accountId)
+            ->where('deleted', '!=', 1)
+            ->exists();
+        abort_unless($ok, 403, 'Farm does not belong to this account');
+    }
+
+    private function assertAnimalInAccount($animalId, int $accountId): void
+    {
+        $ok = FarmAnimal::where('id', $animalId)
+            ->where('account_id', $accountId)
+            ->exists();
+        abort_unless($ok, 403, 'Animal does not belong to this account');
     }
 
     // UPDATE EVENT

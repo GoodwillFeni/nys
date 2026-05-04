@@ -14,10 +14,6 @@ class ShopCashflowController extends ShopBaseController
 
         $this->requireAccountAccess($request, $accountId);
 
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
-
         $request->validate([
             'from' => 'required|date',
             'to' => 'required|date',
@@ -40,10 +36,6 @@ class ShopCashflowController extends ShopBaseController
 
         $this->requireAccountAccess($request, $accountId);
 
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
-
         if ((int) $cashflow->account_id !== $accountId) {
             return response()->json(['status' => 'error', 'message' => 'Not found'], 404);
         }
@@ -57,10 +49,6 @@ class ShopCashflowController extends ShopBaseController
         $accountId = $this->requireActiveAccountId($request);
 
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         $request->validate([
             'transaction_type' => 'required|string|max:100',
@@ -93,10 +81,6 @@ class ShopCashflowController extends ShopBaseController
         $accountId = $this->requireActiveAccountId($request);
 
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         if ((int) $cashflow->account_id !== $accountId) {
             return response()->json(['status' => 'error', 'message' => 'Not found'], 404);
@@ -133,10 +117,6 @@ class ShopCashflowController extends ShopBaseController
         $accountId = $this->requireActiveAccountId($request);
 
         $this->requireAccountAccess($request, $accountId);
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json(['status' => 'error', 'message' => 'Not allowed'], 403);
-        }
 
         if ((int) $cashflow->account_id !== $accountId) {
             return response()->json(['status' => 'error', 'message' => 'Not found'], 404);

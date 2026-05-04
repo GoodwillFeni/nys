@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
+use App\Traits\SoftDeletesViaFlag;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 
 class FarmAnimal extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToAccount, SoftDeletesViaFlag;
 
     protected $table = 'farm_animals';
 

@@ -56,6 +56,16 @@
             />
           </div>
 
+          <div class="input-group">
+            <select v-model="form.account_type" required>
+              <option value="" disabled>What will you use this for?</option>
+              <option value="Home">Home / Personal</option>
+              <option value="Farm">Farm</option>
+              <option value="Shop">Shop</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
           <button type="submit" :disabled="loading">
             {{ loading ? 'Creating account...' : 'Sign Up' }}
           </button>
@@ -89,7 +99,8 @@ export default {
         surname: "",
         email: "",
         phone: "",
-        password: ""
+        password: "",
+        account_type: "Home"
       }
     };
   },

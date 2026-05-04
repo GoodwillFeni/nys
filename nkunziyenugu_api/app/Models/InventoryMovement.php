@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
+use App\Traits\SoftDeletesViaFlag;
 use Illuminate\Database\Eloquent\Model;
 
 class InventoryMovement extends Model
 {
+    use BelongsToAccount, SoftDeletesViaFlag;
+
     protected $table = 'farm_inventory_movements';
 
     protected $fillable = [

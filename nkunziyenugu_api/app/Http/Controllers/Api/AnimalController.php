@@ -4,20 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Farm;
 use App\Models\FarmAnimal;
 use App\Models\FarmAnimalType;
 use App\Models\FarmAnimalEvent;
 use App\Models\AnimalBreed;
 use App\Services\AuditLogService;
+use App\Traits\ResolvesAccount;
 
 class AnimalController extends Controller
 {
+    use ResolvesAccount;
+
     public function index(Request $request)
     {
-        // determine account id from various sources: request body, header, authenticated user
-        $accountId = $request->account_id
-            ?? $request->header('X-Account-ID')
-            ?? optional($request->user())->account_id;
+        $accountId = $this->resolveAccountId($request);
 
         $query = FarmAnimal::with([
                             'animalType',
@@ -28,11 +29,17 @@ class AnimalController extends Controller
                             'mother:id,animal_tag,animal_name',
                             ]);
 
-        if ($accountId) {
-            $query->where('account_id', $accountId);
-        }
+        $query->where('account_id', $accountId);
 
         if ($request->farm_id) {
+            // Reject filters pointing at another tenant's farm — the AND
+            // account_id above would silently return zero rows otherwise,
+            // but a 403 makes the misuse obvious.
+            $farmInAccount = Farm::where('id', $request->farm_id)
+                ->where('account_id', $accountId)
+                ->where('deleted', '!=', 1)
+                ->exists();
+            abort_unless($farmInAccount, 403, 'Farm does not belong to this account');
             $query->where('farm_id', $request->farm_id);
         }
 
@@ -57,8 +64,9 @@ class AnimalController extends Controller
 
     public function store(Request $request) // Create a new animal
     {
+        $accountId = $this->resolveAccountId($request);
+
         $request->validate([
-            'account_id' => 'required|integer',
             'farm_id' => 'required|integer|exists:farm_farms,id',
             'animal_type_id' => 'required|integer|exists:farm_animal_types,id',
             'animal_tag' => [
@@ -82,8 +90,15 @@ class AnimalController extends Controller
             'breed_id' => 'required|integer|exists:farm_animal_breeds,id',
         ]);
 
+        // Farm must belong to the active account.
+        $farmInAccount = Farm::where('id', $request->farm_id)
+            ->where('account_id', $accountId)
+            ->where('deleted', '!=', 1)
+            ->exists();
+        abort_unless($farmInAccount, 403, 'Farm does not belong to this account');
+
         return FarmAnimal::create([ // Create the animal record
-            'account_id' => $request->account_id,
+            'account_id' => $accountId,
             'farm_id' => $request->farm_id,
             'animal_type_id' => $request->animal_type_id,
             'animal_tag' => $request->animal_tag,
@@ -261,8 +276,7 @@ class AnimalController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        $accountId = $request->account_id
-            ?? $request->header('X-Account-ID');
+        $accountId = $this->resolveAccountId($request);
 
         $breed = AnimalBreed::create([
             'account_id' => $accountId,

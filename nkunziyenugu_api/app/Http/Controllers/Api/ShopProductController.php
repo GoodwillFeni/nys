@@ -52,13 +52,6 @@ class ShopProductController extends ShopBaseController
 
         $this->requireAccountAccess($request, $accountId);
 
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Not allowed'
-            ], 403);
-        }
-
         $request->validate([
             'product_name' => 'required|string|max:255',
             'product_type' => 'nullable|string|max:100',
@@ -111,13 +104,6 @@ class ShopProductController extends ShopBaseController
                 'status' => 'error',
                 'message' => 'Product not found'
             ], 404);
-        }
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Not allowed'
-            ], 403);
         }
 
         $request->validate([
@@ -180,13 +166,6 @@ class ShopProductController extends ShopBaseController
                 'status' => 'error',
                 'message' => 'Product not found'
             ], 404);
-        }
-
-        if (!$this->hasPrivilegedRole($request, $accountId)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Not allowed'
-            ], 403);
         }
 
         $oldValues = $product->getAttributes();

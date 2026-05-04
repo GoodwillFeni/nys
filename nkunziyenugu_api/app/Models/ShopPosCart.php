@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class ShopPosCart extends Model
 {
+    use BelongsToAccount;
+
     protected $table = 'shop_pos_carts';
 
     protected $fillable = [

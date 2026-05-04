@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
 use Illuminate\Database\Eloquent\Model;
 
 class ShopOrder extends Model
 {
+    use BelongsToAccount;
+
     protected $table = 'shop_orders';
 
     protected $fillable = [
@@ -34,6 +37,44 @@ class ShopOrder extends Model
     const STATUS_APPROVED         = 'approved';
     const STATUS_REJECTED         = 'rejected';
     const STATUS_COMPLETED        = 'completed';
+
+    /** Every legal value the status column may hold. */
+    public static function validStatuses(): array
+    {
+        return [
+            self::STATUS_PENDING_APPROVAL,
+            self::STATUS_APPROVED,
+            self::STATUS_REJECTED,
+            self::STATUS_COMPLETED,
+        ];
+    }
+
+    /**
+     * The subset of statuses an admin can set on adminUpdate. Excludes
+     * pending_approval — that's the initial state, never a transition target.
+     */
+    public static function adminTransitionStatuses(): array
+    {
+        return [
+            self::STATUS_APPROVED,
+            self::STATUS_REJECTED,
+            self::STATUS_COMPLETED,
+        ];
+    }
+
+    /**
+     * Last line of defence: refuse to save a row with an unknown status,
+     * even if a controller forgets to validate. Belt-and-braces guard
+     * against bypass attacks (e.g. POSTing status='paid' directly).
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (ShopOrder $order) {
+            if ($order->status !== null && !in_array($order->status, self::validStatuses(), true)) {
+                throw new \RuntimeException("Invalid order status '{$order->status}'");
+            }
+        });
+    }
 
     public function account()
     {

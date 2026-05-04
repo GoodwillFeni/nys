@@ -1,10 +1,16 @@
 <?php
 namespace App\Models;
 
+use App\Traits\BelongsToAccount;
+use App\Traits\SoftDeletesViaFlag;
 use Illuminate\Database\Eloquent\Model;
 
 class Device extends Model
 {
+    use BelongsToAccount, SoftDeletesViaFlag;
+
+    protected $softDeleteColumn = 'deleted_flag';
+
     protected $fillable = [
         'name',
         'device_uid',
