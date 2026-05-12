@@ -60,6 +60,12 @@ const routes = [
         meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin'] }
     },
     {
+        path: '/Devices/Dashboard',
+        name: 'DeviceDashboard',
+        component: () => import('../components/views/devices/DeviceDashboard.vue'),
+        meta: { requiresAuth: true, roles: ['Admin', 'Owner', 'SuperAdmin', 'Viewer'] }
+    },
+    {
         path: '/DeviceList',
         name: 'DevicesList',
         component: () => import('../components/views/devices/DeviceList.vue'),

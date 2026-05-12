@@ -73,4 +73,73 @@ return [
         ],
         'actions' => ['view'],
     ],
+
+    // -------------------------------------------------------------------
+    // Self-signup presets, keyed 1:1 with the `account_type` the user
+    // picks at signup. AuthController::register and AccountsController::
+    // createAccount look these up by name. Common base across all four:
+    // Dashboard + Users & Admin + Devices — every signup user owns their
+    // account and needs to manage their own team and trackers.
+    // Super admin can grant additional routes later via EditPermissions.
+    // -------------------------------------------------------------------
+
+    'Home' => [
+        'routes' => [
+            // Common base
+            'MainDashboard',
+            'UserList', 'AddUser', 'EditUser',
+            'Accounts', 'AddAccount', 'EditAccount',
+            'AuditLogs', 'EditPermissions',
+            'DeviceDashboard', 'DevicesList', 'AddDevice', 'DeviceLogs',
+        ],
+        'actions' => ['view', 'add', 'edit', 'delete', 'assign', 'configure'],
+    ],
+
+    'Farm' => [
+        'routes' => [
+            // Common base
+            'MainDashboard',
+            'UserList', 'AddUser', 'EditUser',
+            'Accounts', 'AddAccount', 'EditAccount',
+            'AuditLogs', 'EditPermissions',
+            'DeviceDashboard', 'DevicesList', 'AddDevice', 'DeviceLogs',
+            // Farm domain
+            'FarmDashboard', 'FarmList', 'AddFarm', 'EditFarm',
+            'AnimalList', 'InventoryView', 'PnlReport',
+            'AddAnimal', 'EditAnimal',
+            'AddAnimalEvent', 'AnimalEventList', 'AnimalDeviceLink',
+            'AnimalTypeList', 'AddAnimalType', 'EditAnimalType',
+            'AnimalBreedList', 'AddAnimalBreed', 'EditAnimalBreed',
+        ],
+        'actions' => ['view', 'add', 'edit', 'delete', 'assign', 'configure', 'approve', 'complete'],
+    ],
+
+    'Shop' => [
+        'routes' => [
+            // Common base
+            'MainDashboard',
+            'UserList', 'AddUser', 'EditUser',
+            'Accounts', 'AddAccount', 'EditAccount',
+            'AuditLogs', 'EditPermissions',
+            'DeviceDashboard', 'DevicesList', 'AddDevice', 'DeviceLogs',
+            // Shop + Customer-facing
+            'ShopDashboard', 'ShopProducts', 'ShopCart', 'ShopMyOrders',
+            'AdminOrders', 'ShopPOS', 'ShopSalesSummary', 'ShopCashFlow', 'AddProduct',
+            'CustomerCredit', 'CustomerCreditRequests',
+        ],
+        'actions' => ['view', 'add', 'edit', 'delete', 'assign', 'configure', 'approve', 'complete'],
+    ],
+
+    'Other' => [
+        'routes' => [
+            // Common base only — same as Home for v1.
+            // Differentiate later if "Other" gets a domain.
+            'MainDashboard',
+            'UserList', 'AddUser', 'EditUser',
+            'Accounts', 'AddAccount', 'EditAccount',
+            'AuditLogs', 'EditPermissions',
+            'DeviceDashboard', 'DevicesList', 'AddDevice', 'DeviceLogs',
+        ],
+        'actions' => ['view', 'add', 'edit', 'delete', 'assign', 'configure'],
+    ],
 ];

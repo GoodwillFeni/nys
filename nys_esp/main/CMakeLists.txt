@@ -14,4 +14,9 @@ idf_component_register(
         gps
         input
         ble_cfg
+        gsm
 )
+# Note: gsm_test.c is kept in this folder as a reference for the SIM800L
+# bring-up sequence (USSD, SMS, network registration). Not built. To run
+# the bring-up test, temporarily swap "main.c" → "gsm_test.c" above, flash,
+# read the USB console, then revert.

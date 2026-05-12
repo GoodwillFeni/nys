@@ -1,8 +1,10 @@
 import axios from "axios";
 
+// API base URL is environment-driven so the same code ships to dev and prod.
+// .env.local      -> http://192.168.x.x:8000/api  (dev LAN, Vue CLI :8080 -> Laravel :8000)
+// .env.production -> /api                          (prod, same-origin under nkunziyenungu.co.za)
 const api = axios.create({
-  //baseURL: "http://192.168.200.33:8000/api",
-  baseURL: "http://192.168.101.153:8000/api",
+  baseURL: process.env.VUE_APP_API_BASE_URL || "/api",
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json"

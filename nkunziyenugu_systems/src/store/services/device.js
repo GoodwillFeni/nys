@@ -17,15 +17,14 @@ const mutations = {
   };
 
   const actions = {
-    async getDeviceList({ commit }, accountId) {
+    // Accepts arbitrary query params. The api client already attaches the
+    // Authorization header and X-Account-ID via its interceptor, so passing
+    // them again here would duplicate. Callers commonly pass {filter: 'outdated_firmware'}
+    // when the Devices Dashboard navigates here with a card click.
+    async getDeviceList({ commit }, params = {}) {
         try {
-        const response = await api.get("/devices", {
-           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-           params: {
-             account_id: accountId,
-           },
-         })
-        commit("SET_DEVICE_LIST", response.data.data);
+          const response = await api.get("/devices", { params });
+          commit("SET_DEVICE_LIST", response.data.data);
         }
         catch (error) {
           toast.error(error.response?.data?.message || "Failed to load devices.");

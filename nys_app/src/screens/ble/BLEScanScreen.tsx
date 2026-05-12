@@ -14,10 +14,25 @@ type Nav = NativeStackNavigationProp<BLEStackParamList, 'BLEScan'>;
 
 export function BLEScanScreen() {
   const nav = useNavigation<Nav>();
+  const token = useAuthStore((s) => s.token);
   const activeAccountId = useAuthStore((s) => s.activeAccountId);
   const [devices, setDevices] = useState<Device[]>([]);
   const [scanning, setScanning] = useState(false);
   const [verifying, setVerifying] = useState(false);
+
+  // Defense-in-depth: RootNavigator already gates this screen behind
+  // token + activeAccountId, but if state is somehow inconsistent (race
+  // during logout, restored navigation state, deep link) we bail rather
+  // than scan/connect with no auth context.
+  useEffect(() => {
+    if (!token || !activeAccountId) {
+      Alert.alert(
+        'Sign in required',
+        'You must be signed in and have an active account selected before configuring a device.',
+        [{ text: 'OK', onPress: () => nav.goBack() }]
+      );
+    }
+  }, [token, activeAccountId, nav]);
 
   const startScan = useCallback(async () => {
     setDevices([]);

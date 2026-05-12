@@ -15,7 +15,7 @@ return new class extends Migration
             $table->foreignId('breed_id')
                 ->nullable()
                 ->after('animal_type_id')
-                ->constrained('animal_breeds')
+                ->constrained('farm_animal_breeds')
                 ->nullOnDelete();
         });
     }

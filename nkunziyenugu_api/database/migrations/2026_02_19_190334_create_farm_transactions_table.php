@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('farm_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('animal_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('farm_id')->constrained('farm_farms')->cascadeOnDelete();
+            $table->foreignId('animal_id')->nullable()->constrained('farm_animals')->nullOnDelete();
 
             $table->enum('type', ['income', 'expense', 'loss']);
             $table->string('category');

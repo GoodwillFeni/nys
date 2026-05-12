@@ -170,6 +170,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Device management
 Route::middleware(['auth:sanctum', 'account.access'])->group(function () {
+    // Dashboard FIRST — must be declared before /devices/{device} so the
+    // 'dashboard' literal doesn't get captured as a route param.
+    Route::middleware('permission:DeviceDashboard,view')->get('/devices/dashboard', [DeviceController::class, 'dashboard']);
     Route::middleware('permission:DevicesList,view')->get('/devices', [DeviceController::class, 'index']);
     Route::middleware('permission:AddDevice,add')->post('/devices', [DeviceController::class, 'store']);
     Route::middleware('permission:DeviceLogs,view')->get('/devices/{device}/logs', [DeviceController::class, 'logs']);

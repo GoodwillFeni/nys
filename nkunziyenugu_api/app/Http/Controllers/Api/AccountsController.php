@@ -44,7 +44,12 @@ class AccountsController extends Controller
     }
 
     /**
-     * Self-service account creation. The caller becomes Owner (all routes + all actions).
+     * Self-service account creation. The caller becomes the owner of the new
+     * account, with the preset that matches the chosen `type` (Home / Farm /
+     * Shop / Other). Same lookup AuthController::register uses at signup so
+     * the experience is consistent — Shop accounts get Shop routes, Farm
+     * accounts get Farm routes, etc. Super admin can grant extra routes
+     * later via EditPermissions.
      */
     public function createAccount(Request $request)
     {
@@ -52,21 +57,32 @@ class AccountsController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:150',
-            'type' => 'nullable|string|max:50',
+            'type' => 'nullable|in:Home,Farm,Shop,Other',
         ]);
 
         DB::beginTransaction();
         try {
+            $type = $request->type ?? 'Home';
+
             $account = Account::create([
                 'name' => $request->name,
-                'type' => $request->type ?? 'Home',
+                'type' => $type,
             ]);
 
             $presets  = require base_path('config/permissions_presets.php');
             $registry = require base_path('config/permissions_registry.php');
             $allRoutes  = array_map(fn($r) => $r['name'], $registry['routes']);
             $allActions = array_map(fn($a) => $a['name'], $registry['actions']);
-            $owner = $presets['Owner'];
+
+            $presetByType = [
+                'Home'  => 'Home',
+                'Farm'  => 'Farm',
+                'Shop'  => 'Shop',
+                'Other' => 'Other',
+            ];
+            $presetName = $presetByType[$type] ?? 'Other';
+            $owner      = $presets[$presetName];
+
             $routes  = $owner['routes']  === '*' ? $allRoutes  : $owner['routes'];
             $actions = $owner['actions'] === '*' ? $allActions : $owner['actions'];
 

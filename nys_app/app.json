@@ -51,8 +51,8 @@
       "expo-secure-store"
     ],
     "extra": {
-      "apiBaseUrl": "http://192.168.101.153:8000/api"
-      //"apiBaseUrl": "http://192.168.200.33:8000/api"
+      "apiBaseUrl": "http://192.168.101.161:8000/api"
+      //"apiBaseUrl": "http://192.168.200.20:8000/api"
     }
   }
 }

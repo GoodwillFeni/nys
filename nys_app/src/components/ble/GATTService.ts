@@ -54,6 +54,42 @@ export async function writeNYSConfig(deviceId: string, cfg: NYSConfigPayload): P
   if (cfg.input1_desc !== undefined)          await writeStringChar(deviceId, CHR_INPUT1_DESC, cfg.input1_desc);
 }
 
+/**
+ * Read every config characteristic the device exposes and return them as
+ * a payload that ConfigForm can consume directly via its `initial` prop.
+ *
+ * The password characteristic is intentionally NOT read — devices return an
+ * empty string for it on read (write-only by convention) so re-prefilling
+ * an empty password would clear the stored WiFi creds on the next save.
+ * Caller leaves the password field blank to keep the existing one.
+ *
+ * Reads run sequentially to avoid swamping the GATT link on slow Androids;
+ * total round-trip is ~5 chars × ~50ms = <300ms, well within UI tolerance.
+ */
+export async function readNYSConfig(deviceId: string): Promise<NYSConfigPayload> {
+  const ssid       = await readStringChar(deviceId, CHR_SSID);
+  const apiUrl     = await readStringChar(deviceId, CHR_API_URL);
+  const hbStr      = await readStringChar(deviceId, CHR_HB_INTERVAL);
+  const locStr     = await readStringChar(deviceId, CHR_LOC_INTERVAL);
+  const input1Desc = await readStringChar(deviceId, CHR_INPUT1_DESC);
+
+  // Intervals come back as ASCII decimal strings (matches writeUintChar).
+  // Treat empty / non-numeric as "device hasn't set this yet".
+  const toNum = (s: string): number | undefined => {
+    if (!s) return undefined;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  return {
+    ssid: ssid || undefined,
+    api_url: apiUrl || undefined,
+    heartbeat_interval_s: toNum(hbStr),
+    location_interval_s:  toNum(locStr),
+    input1_desc: input1Desc || undefined,
+  };
+}
+
 export async function commitConfig(deviceId: string): Promise<void> {
   // Fire-and-forget: the device immediately calls esp_restart() and won't ACK.
   // Using write-with-response would always show as "failed" on the app side.

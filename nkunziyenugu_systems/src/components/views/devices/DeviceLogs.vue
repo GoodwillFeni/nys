@@ -67,6 +67,12 @@
           <th>Lat</th>
           <th>Lng</th>
           <th>Sensor</th>
+          <!-- Heartbeat-only columns. Populated only when log.type === 'heartbeat'. -->
+          <th>Firmware</th>
+          <th>Balance</th>
+          <th class="col-narrow">Bal. checked</th>
+          <th class="col-narrow">Uptime</th>
+          <th class="col-narrow">Seq</th>
           <th>Received At</th>
           <th>Actions</th>
         </tr>
@@ -91,6 +97,14 @@
             </td>
             <td v-else>-</td>
             <!-- End sensor data -->
+
+            <!-- Heartbeat fields — only populated for heartbeat rows -->
+            <td>{{ log.type === 'heartbeat' ? (log.payload?.firmware_version ?? '-') : '-' }}</td>
+            <td>{{ log.type === 'heartbeat' ? (log.payload?.balance ?? '-') : '-' }}</td>
+            <td class="col-narrow">{{ log.type === 'heartbeat' && log.payload?.balance_ts ? relativeTime(log.payload.balance_ts) : '-' }}</td>
+            <td class="col-narrow">{{ log.type === 'heartbeat' && log.payload?.uptime_s != null ? humanizeUptime(log.payload.uptime_s) : '-' }}</td>
+            <td class="col-narrow">{{ log.type === 'heartbeat' && log.payload?.message_seq != null ? log.payload.message_seq : '-' }}</td>
+
             <td>{{ formatDate(log.created_at) }}</td>
             <td>
               <button class="button-info" @click="togglePayload(log.id)">
@@ -100,14 +114,14 @@
             </td>
           </tr>
           <tr v-show="expandedPayloadId === log.id">
-            <td colspan="7">
+            <td colspan="13">
               <pre class="payload-pre">{{ prettyJson(log.payload) }}</pre>
             </td>
           </tr>
         </template>
 
         <tr v-if="logs.length === 0">
-          <td colspan="7">No logs found.</td>
+          <td colspan="13">No logs found.</td>
         </tr>
       </tbody>
     </table>
@@ -131,38 +145,9 @@
 <script>
 import api from "@/store/services/api";
 import { useToast } from "vue-toastification";
+import { markRaw } from "vue";
+import L from "@/utils/leaflet-setup";
 const toast = useToast();
-
-let googleMapsLoadPromise = null;
-function loadGoogleMaps(apiKey) {
-  if (window.google && window.google.maps) {
-    return Promise.resolve(window.google.maps);
-  }
-  if (googleMapsLoadPromise) {
-    return googleMapsLoadPromise;
-  }
-  googleMapsLoadPromise = new Promise((resolve, reject) => {
-    if (!apiKey) {
-      reject(new Error("Missing Google Maps API key"));
-      return;
-    }
-    const existing = document.querySelector('script[data-google-maps="1"]');
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.google.maps));
-      existing.addEventListener("error", reject);
-      return;
-    }
-    const script = document.createElement("script");
-    script.setAttribute("data-google-maps", "1");
-    script.async = true;
-    script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
-    script.onload = () => resolve(window.google.maps);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-  return googleMapsLoadPromise;
-}
 
 export default {
   name: "DeviceLogs",
@@ -214,30 +199,17 @@ export default {
   },
   
   methods: {
-    destroyMap() { // Destroy the map if it exists
+    destroyMap() {
+      // map.remove() detaches every Leaflet event listener and tears down the
+      // tile DOM. Skipping it is the #1 source of memory leaks on SPA route
+      // changes — listeners pile up on window resize/zoom and the tab freezes.
       if (this.map) {
-        try {
-          if (this.mapLine) {
-            this.mapLine.setMap(null);
-          }
-        } catch (e) {
-          // ignore
-        }
-        try {
-          if (Array.isArray(this.mapMarkers)) {
-            for (const m of this.mapMarkers) {
-              if (m && m.setMap) {
-                m.setMap(null);
-              }
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-        this.map = null;
-        this.mapMarkers = [];
-        this.mapLine = null;
+        try { this.map.remove(); } catch (e) { /* ignore */ }
       }
+      this.map = null;
+      this.mapMarkers = [];
+      this.mapLine = null;
+      this.mapTileLayers = null;
     },
 
     toDateTimeLocal(date) { // Converts a Date object to a string in the format YYYY-MM-DDTHH:MM:SS
@@ -259,61 +231,86 @@ export default {
       this.filters.to = this.toDateTimeLocal(end);
     },
 
-    ensureMap() { // Ensure the map is loaded
-      if (this.map) {
-        return;
-      }
+    ensureMap() {
+      if (this.map) return;
       const el = document.getElementById("deviceLogsMap");
-      if (!el) {
-        return;
-      }
-      const apiKey = process.env.VUE_APP_GOOGLE_MAPS_API_KEY;
-      loadGoogleMaps(apiKey)
-        .then((maps) => {
-          if (this.map || this.filters.type !== "location") {
-            return;
-          }
-          this.map = new maps.Map(el, {
-            center: { lat: 0, lng: 0 },
-            zoom: 2,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-            gestureHandling: "cooperative",
-          });
-          this.refreshMap();
-        })
-        .catch((e) => {
-          console.error(e);
-          toast.error("Failed to load Google Maps.");
-        });
-    },
-    refreshMap() {// Refresh the map
-      if (this.filters.type !== "location") {
-        return;
-      }
+      if (!el) return;
 
-      this.ensureMap();
-      if (!this.map || !(window.google && window.google.maps)) {
-        return;
-      }
+      // Build the four base layers up-front. Lazy factories aren't worth it
+      // here — the layer switcher needs them all available to swap.
+      const osmAttr =
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-      const maps = window.google.maps;
-
-      try {
-        if (Array.isArray(this.mapMarkers)) {
-          for (const m of this.mapMarkers) {
-            if (m && m.setMap) {
-              m.setMap(null);
-            }
-          }
+      const streets = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { maxZoom: 19, attribution: osmAttr }
+      );
+      const satellite = L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        {
+          maxZoom: 19,
+          attribution:
+            "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
         }
-      } catch (e) {
-        // ignore
+      );
+      const terrain = L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        {
+          maxZoom: 17,
+          attribution:
+            osmAttr +
+            ' | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+        }
+      );
+      const dark = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        {
+          maxZoom: 19,
+          subdomains: "abcd",
+          attribution:
+            osmAttr +
+            ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        }
+      );
+
+      this.mapTileLayers = { Streets: streets, Satellite: satellite, Terrain: terrain, Dark: dark };
+
+      // markRaw: keep Leaflet's internal circular refs out of Vue's reactivity
+      // proxy — otherwise you get random "Maximum call stack" errors from
+      // Vue trying to deep-track _leaflet_id chains.
+      this.map = markRaw(
+        L.map(el, {
+          center: [0, 0],
+          zoom: 2,
+          layers: [streets],
+          zoomControl: true,
+          worldCopyJump: true,
+        })
+      );
+
+      L.control
+        .layers(this.mapTileLayers, {}, { position: "topright", collapsed: true })
+        .addTo(this.map);
+
+      // After v-if/v-show toggles, the container's measured size is often 0
+      // until the next paint frame. invalidateSize fixes the grey-tile bug.
+      this.$nextTick(() => this.map?.invalidateSize());
+
+      this.refreshMap();
+    },
+
+    refreshMap() {
+      if (this.filters.type !== "location") return;
+      if (!this.map) {
+        this.ensureMap();
+        return; // ensureMap calls refreshMap once the map is up
       }
+
+      // Tear down old overlays — keep the base tile layer + control intact
+      for (const m of this.mapMarkers) m.remove();
       this.mapMarkers = [];
       if (this.mapLine) {
-        this.mapLine.setMap(null);
+        this.mapLine.remove();
         this.mapLine = null;
       }
 
@@ -321,69 +318,57 @@ export default {
         .filter((l) => l && l.lat != null && l.lng != null)
         .map((l) => {
           const ts = l.message_timestamp || l.device_timestamp || l.created_at;
-          const time = ts ? new Date(ts).getTime() : 0;
           return {
             log: l,
-            time,
+            time: ts ? new Date(ts).getTime() : 0,
             lat: Number(l.lat),
             lng: Number(l.lng),
           };
         })
-        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-
-      points.sort((a, b) => a.time - b.time);
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        .sort((a, b) => a.time - b.time);
 
       if (points.length === 0) {
-        this.map.setCenter({ lat: 0, lng: 0 });
-        this.map.setZoom(2);
+        this.map.setView([0, 0], 2);
+        this.$nextTick(() => this.map?.invalidateSize());
         return;
       }
 
-      const latlngs = [];
+      const latlngs = points.map((p) => [p.lat, p.lng]);
+
       for (const p of points) {
-        const ll = { lat: p.lat, lng: p.lng };
-        latlngs.push(ll);
+        const ts = p.log.message_timestamp || p.log.device_timestamp || p.log.created_at;
         const gps = p.log.payload?.gps;
-        const title = `Time: ${this.formatDate(p.log.message_timestamp || p.log.device_timestamp || p.log.created_at)}`;
-        const marker = new maps.Marker({
-          position: ll,
-          map: this.map,
-          title,
-        });
-        const infoHtml = `<div style="min-width:220px">
-          <div><strong>Time:</strong> ${this.formatDate(p.log.message_timestamp || p.log.device_timestamp || p.log.created_at)}</div>
+        const popup = `<div style="min-width:220px">
+          <div><strong>Time:</strong> ${this.formatDate(ts)}</div>
           <div><strong>Lat:</strong> ${p.lat}</div>
           <div><strong>Lng:</strong> ${p.lng}</div>
           ${gps ? `<div><strong>Fix:</strong> ${gps.fix}</div>` : ""}
           ${gps ? `<div><strong>Satellites:</strong> ${gps.satellites}</div>` : ""}
           ${gps ? `<div><strong>Fix Quality:</strong> ${gps.fix_quality}</div>` : ""}
         </div>`;
-        const info = new maps.InfoWindow({ content: infoHtml });
-        marker.addListener("click", () => info.open({ map: this.map, anchor: marker }));
+        const marker = L.marker([p.lat, p.lng], {
+          title: `Time: ${this.formatDate(ts)}`,
+        })
+          .bindPopup(popup)
+          .addTo(this.map);
         this.mapMarkers.push(marker);
       }
 
-      this.mapLine = new maps.Polyline({
-        path: latlngs,
-        strokeColor: "#2c7be5",
-        strokeOpacity: 0.9,
-        strokeWeight: 3,
-        map: this.map,
-      });
+      this.mapLine = L.polyline(latlngs, {
+        color: "#2c7be5",
+        weight: 3,
+        opacity: 0.9,
+      }).addTo(this.map);
+
       this.$nextTick(() => {
-        if (!this.map) {
-          return;
-        }
+        if (!this.map) return;
         if (latlngs.length === 1) {
-          this.map.setCenter(latlngs[0]);
-          this.map.setZoom(15);
-          return;
+          this.map.setView(latlngs[0], 15);
+        } else {
+          this.map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
         }
-        const bounds = new maps.LatLngBounds();
-        for (const ll of latlngs) {
-          bounds.extend(ll);
-        }
-        this.map.fitBounds(bounds);
+        this.map.invalidateSize();
       });
     },
 
@@ -410,6 +395,32 @@ export default {
 
     togglePayload(id) {
       this.expandedPayloadId = this.expandedPayloadId === id ? null : id;
+    },
+
+    // "2d 4h", "13m", "47s" — keep it human and compact for table cells.
+    humanizeUptime(seconds) {
+      const s = Number(seconds);
+      if (!Number.isFinite(s) || s < 0) return "-";
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      if (d > 0) return `${d}d ${h}h`;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m`;
+      return `${Math.floor(s)}s`;
+    },
+
+    // "5h ago", "3d ago", "just now" — relative to current wall clock.
+    // Accepts either epoch seconds (integer) or an ISO-8601 string.
+    relativeTime(value) {
+      if (value == null) return "-";
+      const epoch = typeof value === "number" ? value * 1000 : new Date(value).getTime();
+      if (!Number.isFinite(epoch)) return "-";
+      const diff = Math.max(0, Math.floor((Date.now() - epoch) / 1000));
+      if (diff < 60)    return "just now";
+      if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+      return `${Math.floor(diff / 86400)}d ago`;
     },
 
     applyFilters() {
@@ -526,5 +537,15 @@ form {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   margin-bottom: 10px;
+}
+
+/* Hide the high-detail heartbeat columns on narrow screens. Firmware +
+ * Balance stay visible because they're the most operationally useful at a
+ * glance; Bal. checked / Uptime / Seq are diagnostic and can wait until
+ * the user expands the payload pane via the eye icon. */
+@media (max-width: 1000px) {
+  .col-narrow {
+    display: none;
+  }
 }
 </style>

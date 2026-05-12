@@ -59,15 +59,8 @@
       </div>
     </div>
 
-    <!-- Detail toggle -->
-    <div class="detail-toggle" v-if="report">
-      <button type="button" class="button-info button-sm" @click="toggleDetail">
-        {{ showDetail ? 'Hide details' : 'Show details' }}
-      </button>
-    </div>
-
-    <!-- Two-column breakdown (only loaded on demand) -->
-    <div class="breakdown-grid" v-if="report && showDetail">
+    <!-- Two-column breakdown — always shown -->
+    <div class="breakdown-grid" v-if="report">
 
       <!-- Animal Events -->
       <div class="breakdown-section">
@@ -138,7 +131,6 @@ export default {
     return {
       farms: [],
       report: null,
-      showDetail: false,
       filters: {
         farm_id: '',
         from: '',
@@ -163,23 +155,15 @@ export default {
 
     async loadReport() {
       try {
-        const params = {};
+        const params = { detail: 1 };
         if (this.filters.farm_id) params.farm_id = this.filters.farm_id;
         if (this.filters.from) params.from = this.filters.from;
         if (this.filters.to) params.to = this.filters.to;
-        if (this.showDetail) params.detail = 1;
 
         const res = await api.get('/farm/reports/pnl', { params });
         this.report = res.data;
       } catch (e) {
         toast.error('Failed to load report');
-      }
-    },
-
-    async toggleDetail() {
-      this.showDetail = !this.showDetail;
-      if (this.showDetail && (!this.report?.animal_events?.breakdown)) {
-        await this.loadReport();
       }
     },
 
@@ -275,7 +259,6 @@ export default {
 .equity-card .value { color: #2e7d32; }
 
 .period-hint { font-size: 12px; color: rgba(255,255,255,0.7); margin: 8px 0 0; }
-.detail-toggle { margin-bottom: 12px; }
 
 .breakdown-grid {
   display: grid;

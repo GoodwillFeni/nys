@@ -20,8 +20,17 @@
 #define LED_ON           0
 #define LED_OFF          1
 
+// ─── GSM modem (SIM800L) pins — mirror gsm_test.c bring-up wiring ────────────
+#define GSM_UART        0       // UART_NUM_0
+#define GSM_RX_GPIO     10
+#define GSM_TX_GPIO     7
+#define GSM_BAUD_RATE   115200
+#define GSM_RX_BUF      1024
+
 // ─── Application constants ───────────────────────────────────────────────────
-#define NYS_API_URL             "http://192.168.101.177:8000/api/device/message"
+// Production endpoint. BLE-configured api_url overrides at runtime.
+#define NYS_API_URL             "http://www.nkunziyenungu.co.za/api/device/message"
+#define NYS_FIRMWARE_VERSION    "1.0.0"
 #define NYS_WIFI_AP_SSID_PREFIX "NYS_"
 #define NYS_WIFI_AP_PASS        "Goodwill@123"
 
@@ -80,6 +89,14 @@ typedef struct {
     uint8_t  last_input2_level;     // last known GPIO output state
 } nys_rtc_data_t;
 
+// ─── Transport mode ──────────────────────────────────────────────────────────
+// BLE-configurable at runtime (characteristic ...0a). No compile-time lock.
+typedef enum {
+    NYS_TX_WIFI_ONLY      = 0,
+    NYS_TX_GSM_ONLY       = 1,
+    NYS_TX_WIFI_THEN_GSM  = 2,   // default at first boot — try WiFi, fall back to GSM
+} nys_transport_mode_t;
+
 // ─── Config type ─────────────────────────────────────────────────────────────
 typedef struct {
     char     ssid[33];           // last connected SSID (index 0 in network list)
@@ -91,7 +108,21 @@ typedef struct {
     uint32_t heartbeat_interval_s;
     uint32_t location_interval_s;
     char     input1_desc[64];
-    bool     deep_sleep_enabled; // NEW: true = deep sleep mode, false = always-on
+    bool     deep_sleep_enabled; // true = deep sleep mode, false = always-on
+
+    // ── GSM / transport (Section B of pre-deploy plan) ───────────────────
+    uint8_t  transport_mode;            // nys_transport_mode_t
+    char     apn[64];                   // GPRS APN, e.g. "internet"
+    char     apn_user[32];              // GPRS user (usually empty)
+    char     apn_pass[32];              // GPRS password (usually empty)
+    char     ussd_balance[16];          // e.g. "*131#"
+    uint32_t gsm_idle_sleep_s;          // sleep modem after this many seconds idle
+    uint32_t gsm_gprs_idle_detach_s;    // detach GPRS after this many seconds idle
+    uint32_t balance_check_interval_s;  // re-query USSD at most this often (default 86400 = 24h)
+
+    // Runtime balance cache — sent with every heartbeat when transport involves GSM
+    char     last_balance[32];          // last fetched balance string, e.g. "R12.34"
+    int64_t  last_balance_ts;           // epoch when last_balance was set
 } nys_cfg_t;
 
 // ─── Queue record ─────────────────────────────────────────────────────────────

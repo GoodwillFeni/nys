@@ -5,7 +5,24 @@
     <AccountSelector v-if="isAuthenticated" />
     <nav>
       <RouterLink to="/" v-if="canRoute('MainDashboard')"><i class="bi bi-house"></i>Main Dashboard</RouterLink>
-      <RouterLink v-if="canRoute('DevicesList')" to="/DeviceList"><i class="bi bi-laptop"></i>Devices</RouterLink>
+
+      <!-- Devices group -->
+      <div v-if="anyDeviceRoute" class="nav-group">
+        <button
+          type="button"
+          class="nav-group__toggle"
+          :class="{ 'nav-group__toggle--active': isDeviceRoute }"
+          @click="toggleDevices">
+          <i class="bi bi-laptop"></i>
+          Devices
+        </button>
+        <div v-show="devicesOpen" class="nav-group__items">
+          <RouterLink v-if="canRoute('DeviceDashboard')" to="/Devices/Dashboard"><i class="bi bi-speedometer2"></i>Dashboard</RouterLink>
+          <RouterLink v-if="canRoute('DevicesList')" to="/DeviceList"><i class="bi bi-list"></i>All Devices</RouterLink>
+          <RouterLink v-if="canRoute('AddDevice')" to="/AddDevice"><i class="bi bi-plus-circle"></i>Add Device</RouterLink>
+        </div>
+      </div>
+
       <RouterLink v-if="canRoute('Accounts')" to="/AccountList"><i class="bi bi-bank"></i>Accounts</RouterLink>
       <RouterLink v-if="canRoute('UserList')" to="/UserList"><i class="bi bi-people"></i>Users</RouterLink>
 
@@ -77,7 +94,8 @@ export default {
   data() {
     return {
       shopOpen: false,
-      farmOpen: false
+      farmOpen: false,
+      devicesOpen: false
     }
   },
 
@@ -87,6 +105,10 @@ export default {
     },
     isFarmRoute() {
       return (this.$route?.path || '').startsWith('/Farm')
+    },
+    // Match every device-related path: /Devices/Dashboard, /DeviceList, /AddDevice, /DeviceLogs/:id
+    isDeviceRoute() {
+      return (this.$route?.path || '').startsWith('/Device')
     },
     isAuthenticated() {
       return this.$store.getters.isAuthenticated
@@ -105,6 +127,9 @@ export default {
       return [
         'FarmDashboard','FarmList','AnimalList','InventoryView','PnlReport',
       ].some(n => this.canRoute(n))
+    },
+    anyDeviceRoute() {
+      return ['DeviceDashboard','DevicesList','AddDevice'].some(n => this.canRoute(n))
     }
   },
 
@@ -124,6 +149,17 @@ export default {
       const willOpen = !this.farmOpen
       if (willOpen && !this.isFarmRoute) this.$router.push('/Farm/FarmDashboard')
       this.farmOpen = willOpen
+    },
+    toggleDevices() {
+      const willOpen = !this.devicesOpen
+      // Open lands on Dashboard if the user has access to it; otherwise fall
+      // back to the flat list. Matches the Shop/Farm "land on a useful page"
+      // pattern instead of just expanding/collapsing.
+      if (willOpen && !this.isDeviceRoute) {
+        if (this.canRoute('DeviceDashboard')) this.$router.push('/Devices/Dashboard')
+        else if (this.canRoute('DevicesList')) this.$router.push('/DeviceList')
+      }
+      this.devicesOpen = willOpen
     }
   },
 
@@ -131,6 +167,7 @@ export default {
     '$route.path'(newPath) {
       if (!(newPath || '').startsWith('/Shop')) this.shopOpen = false
       if (!(newPath || '').startsWith('/Farm')) this.farmOpen = false
+      if (!(newPath || '').startsWith('/Device')) this.devicesOpen = false
     }
   }
 }

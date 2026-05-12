@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('animal_type_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('animal_type_id')->constrained('farm_animal_types')->cascadeOnDelete();
 
             $table->string('breed_name');
             $table->text('description')->nullable();

@@ -14,6 +14,16 @@ esp_err_t cfg_save_settings(uint32_t heartbeat_interval_s,
                              const char *input1_desc,
                              const char *api_url,
                              int deep_sleep_enabled);
+
+// Section B: transport / GSM / power-management persistence. Called by
+// ble_cfg's commit handler when the phone app writes new values.
+esp_err_t cfg_save_transport_mode(uint8_t mode);                                     // 0=wifi 1=gsm 2=wifi+gsm
+esp_err_t cfg_save_apn(const char *apn, const char *user, const char *pass);         // user/pass may be NULL
+esp_err_t cfg_save_ussd_balance(const char *code);
+esp_err_t cfg_save_gsm_power(uint32_t idle_sleep_s,
+                             uint32_t gprs_idle_detach_s,
+                             uint32_t balance_check_interval_s);
+
 void      cfg_ensure_identity(nys_cfg_t *cfg);
 
 // ─── Saved networks ───────────────────────────────────────────────────────────

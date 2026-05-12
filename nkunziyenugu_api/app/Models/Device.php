@@ -37,4 +37,17 @@ class Device extends Model
     {
         return $this->belongsTo(Account::class);
     }
+
+    /**
+     * Most recent heartbeat for this device, if any. Uses Laravel 8+'s
+     * `ofMany('created_at', 'max')` so the DB does the latest-row pick
+     * in a single query instead of N+1. Heartbeats are the only message
+     * type that carries firmware_version and balance.
+     */
+    public function latestHeartbeat()
+    {
+        return $this->hasOne(DeviceMessage::class)
+                    ->where('type', 'heartbeat')
+                    ->ofMany('created_at', 'max');
+    }
 }

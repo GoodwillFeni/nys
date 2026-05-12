@@ -12,4 +12,8 @@ idf_component_register(
         nys_common
         wifi
         gps
+    # gsm.h is included only from comms.c (private impl), not from comms.h,
+    # so it goes in PRIV_REQUIRES rather than REQUIRES.
+    PRIV_REQUIRES
+        gsm
 )

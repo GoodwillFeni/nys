@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('animal_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('animal_id')->constrained('farm_animals')->cascadeOnDelete();
             $table->foreignId('device_id')->constrained()->cascadeOnDelete();
 
             $table->timestamp('linked_from');

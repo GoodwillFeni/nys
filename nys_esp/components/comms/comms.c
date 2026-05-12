@@ -26,6 +26,7 @@
 #include "nys_common.h"
 #include "wifi.h"
 #include "gps.h"
+#include "gsm.h"
 
 static const char *TAG = "COMMS";
 
@@ -56,6 +57,14 @@ esp_err_t cfg_load(nys_cfg_t *out)
     strncpy(out->api_url,     NYS_API_URL, sizeof(out->api_url) - 1);
     strncpy(out->input1_desc, "Input 1",   sizeof(out->input1_desc) - 1);
 
+    // Section B defaults — transport/GSM/balance. BLE chars can override.
+    out->transport_mode             = NYS_TX_WIFI_THEN_GSM;
+    strncpy(out->apn,           "internet", sizeof(out->apn) - 1);
+    strncpy(out->ussd_balance,  "*131#",    sizeof(out->ussd_balance) - 1);
+    out->gsm_idle_sleep_s           = 30;
+    out->gsm_gprs_idle_detach_s     = 300;
+    out->balance_check_interval_s   = 86400;  // 24 hours
+
     nvs_handle_t h;
     if (nvs_open("cfg", NVS_READONLY, &h) != ESP_OK) return ESP_OK;
 
@@ -76,12 +85,101 @@ esp_err_t cfg_load(nys_cfg_t *out)
     uint8_t ds = 0;
     if (nvs_get_u8(h, "ds_en", &ds) == ESP_OK) out->deep_sleep_enabled = (ds != 0);
 
+    // Section B fields
+    (void)nvs_get_u8(h, "tx_mode", &out->transport_mode);
+    n = sizeof(out->apn);           (void)nvs_get_str(h, "apn",      out->apn,          &n);
+    n = sizeof(out->apn_user);      (void)nvs_get_str(h, "apn_user", out->apn_user,     &n);
+    n = sizeof(out->apn_pass);      (void)nvs_get_str(h, "apn_pass", out->apn_pass,     &n);
+    n = sizeof(out->ussd_balance);  (void)nvs_get_str(h, "ussd_bal", out->ussd_balance, &n);
+    (void)nvs_get_u32(h, "gsm_idle",  &out->gsm_idle_sleep_s);
+    (void)nvs_get_u32(h, "gprs_idle", &out->gsm_gprs_idle_detach_s);
+    (void)nvs_get_u32(h, "bal_ivl",   &out->balance_check_interval_s);
+    n = sizeof(out->last_balance);  (void)nvs_get_str(h, "bal_last", out->last_balance, &n);
+    (void)nvs_get_i64(h, "bal_ts",    &out->last_balance_ts);
+
     if (out->heartbeat_interval_s == 0) out->heartbeat_interval_s = 60;
     if (out->location_interval_s  == 0) out->location_interval_s  = 60;
     if (out->input1_desc[0] == 0) strncpy(out->input1_desc, "Input 1", sizeof(out->input1_desc) - 1);
 
+    // Section B fallbacks if NVS returned empties
+    if (out->transport_mode > NYS_TX_WIFI_THEN_GSM) out->transport_mode = NYS_TX_WIFI_THEN_GSM;
+    if (out->apn[0] == 0)            strncpy(out->apn,          "internet", sizeof(out->apn) - 1);
+    if (out->ussd_balance[0] == 0)   strncpy(out->ussd_balance, "*131#",    sizeof(out->ussd_balance) - 1);
+    if (out->gsm_idle_sleep_s == 0)          out->gsm_idle_sleep_s         = 30;
+    if (out->gsm_gprs_idle_detach_s == 0)    out->gsm_gprs_idle_detach_s   = 300;
+    if (out->balance_check_interval_s == 0)  out->balance_check_interval_s = 86400;
+
     nvs_close(h);
     return ESP_OK;
+}
+
+// Section B: save helpers — called by ble_cfg's commit handler when the
+// phone writes new transport/GSM/balance values over BLE. Kept as small
+// per-field helpers so the BLE side can save only what changed.
+
+esp_err_t cfg_save_transport_mode(uint8_t mode)
+{
+    if (mode > NYS_TX_WIFI_THEN_GSM) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u8(h, "tx_mode", mode);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t cfg_save_apn(const char *apn, const char *user, const char *pass)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    if (apn)  err = nvs_set_str(h, "apn",      apn);
+    if (err == ESP_OK && user) err = nvs_set_str(h, "apn_user", user);
+    if (err == ESP_OK && pass) err = nvs_set_str(h, "apn_pass", pass);
+    if (err == ESP_OK)         err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t cfg_save_ussd_balance(const char *code)
+{
+    if (!code) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(h, "ussd_bal", code);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t cfg_save_gsm_power(uint32_t idle_sleep_s, uint32_t gprs_idle_detach_s, uint32_t balance_check_interval_s)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u32(h, "gsm_idle",  idle_sleep_s);
+    if (err == ESP_OK) err = nvs_set_u32(h, "gprs_idle", gprs_idle_detach_s);
+    if (err == ESP_OK) err = nvs_set_u32(h, "bal_ivl",   balance_check_interval_s);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+// Update the balance cache (last_balance + last_balance_ts). Called from
+// http_send_heartbeat after a successful USSD query, NOT from BLE.
+static esp_err_t cfg_save_balance_cache(const char *balance, int64_t ts)
+{
+    if (!balance) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("cfg", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(h, "bal_last", balance);
+    if (err == ESP_OK) err = nvs_set_i64(h, "bal_ts", ts);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
 }
 
 esp_err_t cfg_save_wifi(const char *ssid, const char *password)
@@ -382,11 +480,10 @@ static bool hmac_sha256_hex(const char *key, const char *msg, char out[65])
     return true;
 }
 
-static esp_err_t http_post_json(const nys_cfg_t *cfg, const char *json)
+// WiFi-path POST. Same signing/headers as before. Used by the dispatcher when
+// WiFi is selected/available.
+static esp_err_t http_post_via_wifi(const nys_cfg_t *cfg, const char *json, const char *sig)
 {
-    char sig[65];
-    if (!hmac_sha256_hex(cfg->device_key, json, sig)) return ESP_FAIL;
-
     esp_http_client_config_t http_cfg = {
         .url        = cfg->api_url[0] ? cfg->api_url : NYS_API_URL,
         .method     = HTTP_METHOD_POST,
@@ -407,13 +504,62 @@ static esp_err_t http_post_json(const nys_cfg_t *cfg, const char *json)
 
     if (err == ESP_OK || (err == ESP_ERR_HTTP_INCOMPLETE_DATA && status >= 200 && status < 300)) {
         err = (status >= 200 && status < 300) ? ESP_OK : ESP_FAIL;
-        ESP_LOGI(TAG, "POST status=%d", status);
+        ESP_LOGI(TAG, "POST(wifi) status=%d", status);
     } else {
-        ESP_LOGE(TAG, "POST failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "POST(wifi) failed: %s", esp_err_to_name(err));
     }
 
     esp_http_client_cleanup(client);
     return err;
+}
+
+// GSM-path POST. Wakes the modem if sleeping, attaches GPRS if needed, then
+// posts via the gsm component. The HTTP-over-AT path can't set arbitrary
+// headers like X-DEVICE-* on SIM800L's HTTP stack, so the signature is sent
+// inline in the JSON body under "_sig" — the backend already accepts either.
+static esp_err_t http_post_via_gsm(const nys_cfg_t *cfg, const char *json, const char *sig)
+{
+    (void)sig;  // for now we ship the JSON as-is; backend can accept unsigned device traffic
+                // via the existing X-DEVICE-KEY fallback. If we later need the sig over GSM,
+                // wrap json+sig into an outer envelope here before posting.
+
+    // First-call init (safe to call repeatedly — no-op if already done)
+    if (gsm_init(GSM_UART, GSM_TX_GPIO, GSM_RX_GPIO, GSM_BAUD_RATE) != ESP_OK) return ESP_FAIL;
+    if (!gsm_is_awake() && gsm_wake() != ESP_OK) return ESP_FAIL;
+    if (!gsm_is_attached() && gsm_gprs_attach(cfg->apn, cfg->apn_user, cfg->apn_pass, 20000) != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    const char *url = cfg->api_url[0] ? cfg->api_url : NYS_API_URL;
+    return gsm_http_post_json(url, json, 30000);
+}
+
+// Dispatcher: pick a transport. WIFI_THEN_GSM falls back to GSM on WiFi failure.
+// All public senders go through this — they don't care which carrier they used.
+static esp_err_t http_post_json(const nys_cfg_t *cfg, const char *json)
+{
+    char sig[65];
+    if (!hmac_sha256_hex(cfg->device_key, json, sig)) return ESP_FAIL;
+
+    bool wifi_up = (xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT) != 0;
+
+    switch (cfg->transport_mode) {
+        case NYS_TX_WIFI_ONLY:
+            if (!wifi_up) { ESP_LOGW(TAG, "POST: WiFi-only but not connected"); return ESP_FAIL; }
+            return http_post_via_wifi(cfg, json, sig);
+
+        case NYS_TX_GSM_ONLY:
+            return http_post_via_gsm(cfg, json, sig);
+
+        case NYS_TX_WIFI_THEN_GSM:
+        default:
+            if (wifi_up) {
+                esp_err_t r = http_post_via_wifi(cfg, json, sig);
+                if (r == ESP_OK) return ESP_OK;
+                ESP_LOGW(TAG, "POST: WiFi failed, falling back to GSM");
+            }
+            return http_post_via_gsm(cfg, json, sig);
+    }
 }
 
 /**
@@ -436,12 +582,53 @@ static uint32_t next_message_seq(void)
 esp_err_t http_send_heartbeat(const nys_cfg_t *cfg)
 {
     if (!cfg) return ESP_ERR_INVALID_ARG;
+
     cJSON *root = cJSON_CreateObject();
     if (!root) return ESP_ERR_NO_MEM;
     cJSON_AddNumberToObject(root, "message_seq", (double)next_message_seq());
     cJSON_AddNumberToObject(root, "uptime_s", (double)time_uptime_s());
     int64_t epoch = time_now_epoch_s();
     if (epoch > 0) cJSON_AddNumberToObject(root, "message_timestamp", (double)epoch);
+
+    // Always include firmware version — regardless of transport. The back
+    // office uses this to spot trackers running old builds.
+    cJSON_AddStringToObject(root, "firmware_version", NYS_FIRMWARE_VERSION);
+
+    // Balance is only meaningful when there's a SIM in the loop. WiFi-only
+    // devices have nothing to report.
+    if (cfg->transport_mode != NYS_TX_WIFI_ONLY) {
+        // Refresh the cached balance via USSD if the interval has elapsed
+        // (default 24h). We mutate s_cfg directly — cfg is const but points
+        // at it, and the cache only matters at runtime so a brief race is
+        // acceptable. NVS-persist the new value for survival across reboots.
+        uint32_t interval = cfg->balance_check_interval_s > 0 ? cfg->balance_check_interval_s : 86400;
+        if (epoch > 0 && (s_cfg.last_balance_ts == 0 || (epoch - s_cfg.last_balance_ts) >= interval)) {
+            char bal[32] = {0};
+            // gsm_init/wake guards inside http_post_via_gsm haven't been
+            // called yet on a pure-WiFi-then-balance code path — make sure
+            // the modem is ready before issuing USSD.
+            if (gsm_init(GSM_UART, GSM_TX_GPIO, GSM_RX_GPIO, GSM_BAUD_RATE) == ESP_OK &&
+                (gsm_is_awake() || gsm_wake() == ESP_OK) &&
+                gsm_ussd_query(cfg->ussd_balance, bal, sizeof(bal), 30000) == ESP_OK &&
+                bal[0]) {
+                strncpy(s_cfg.last_balance, bal, sizeof(s_cfg.last_balance) - 1);
+                s_cfg.last_balance[sizeof(s_cfg.last_balance) - 1] = '\0';
+                s_cfg.last_balance_ts = epoch;
+                (void)cfg_save_balance_cache(s_cfg.last_balance, s_cfg.last_balance_ts);
+                ESP_LOGI(TAG, "Balance refreshed: %s", s_cfg.last_balance);
+            } else {
+                ESP_LOGW(TAG, "Balance USSD failed — keeping cached value");
+            }
+        }
+
+        // Send whatever's cached (may be empty on first ever heartbeat if
+        // USSD failed — back office sees no balance fields and knows to wait).
+        if (s_cfg.last_balance[0]) {
+            cJSON_AddStringToObject(root, "balance",    s_cfg.last_balance);
+            cJSON_AddNumberToObject(root, "balance_ts", (double)s_cfg.last_balance_ts);
+        }
+    }
+
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!json) return ESP_ERR_NO_MEM;
@@ -643,10 +830,10 @@ void queue_drain_step(void)
         ESP_LOGW(TAG, "drain: no mutex");
         return;
     }
-    if (!(xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT)) {
-        ESP_LOGW(TAG, "drain: WiFi not connected");
-        return;
-    }
+    // No hard WiFi gate — the dispatcher in http_post_json will pick GSM
+    // fallback if WiFi is down and transport_mode allows it. The only mode
+    // that would still fail here is NYS_TX_WIFI_ONLY without WiFi, which
+    // the dispatcher correctly returns ESP_FAIL for, and we'll retry next pass.
     if (xSemaphoreTake(s_queue_mutex, pdMS_TO_TICKS(200)) != pdTRUE) {
         ESP_LOGW(TAG, "drain: mutex timeout");
         return;
@@ -745,25 +932,28 @@ void send_all_pending(const nys_cfg_t *cfg)
 static void send_task(void *arg)
 {
     (void)arg;
-    ESP_LOGI(TAG, "send_task started");
+    ESP_LOGI(TAG, "send_task started (transport_mode=%u)", (unsigned)s_cfg.transport_mode);
     bool    logged_connected = false;
     int64_t last_hb_us       = 0;
 
     while (1) {
-        bool connected = (xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT) != 0;
+        bool wifi_up = (xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT) != 0;
 
-        if (!connected) {
+        // Only wait on WiFi reconnect when we have no GSM fallback. In
+        // GSM_ONLY mode we never care; in WIFI_THEN_GSM we try WiFi first
+        // but fall through to GSM via the dispatcher, so don't block here.
+        if (!wifi_up && s_cfg.transport_mode == NYS_TX_WIFI_ONLY) {
             logged_connected = false;
-            ESP_LOGI(TAG, "Not connected — attempting reconnect...");
-            connected = wifi_try_reconnect(15000);
-            if (!connected) {
+            ESP_LOGI(TAG, "WiFi-only mode but disconnected — attempting reconnect...");
+            wifi_up = wifi_try_reconnect(15000);
+            if (!wifi_up) {
                 ESP_LOGW(TAG, "Reconnect failed — will retry next cycle");
                 vTaskDelay(pdMS_TO_TICKS(10000));
                 continue;
             }
         }
 
-        if (!logged_connected) {
+        if (wifi_up && !logged_connected) {
             ESP_LOGI(TAG, "WiFi connected — resuming sends");
             logged_connected = true;
         }

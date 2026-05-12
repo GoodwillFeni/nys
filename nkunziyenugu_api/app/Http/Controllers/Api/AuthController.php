@@ -46,20 +46,37 @@ class AuthController extends Controller
                 'type' => $request->account_type ?? 'Home',
             ]);
 
-            // 3️⃣ Link user to account with full Owner permissions (all routes + all actions)
+            // 3️⃣ Link user to account with the preset that matches the chosen
+            //    account_type. Self-signups don't get the full Owner superset —
+            //    they get exactly what their domain needs. Super admin can grant
+            //    extra routes later via EditPermissions.
             $presets  = require base_path('config/permissions_presets.php');
             $registry = require base_path('config/permissions_registry.php');
             $allRoutes  = array_map(fn($r) => $r['name'], $registry['routes']);
             $allActions = array_map(fn($a) => $a['name'], $registry['actions']);
-            $ownerPreset = $presets['Owner'];
+
+            $presetByType = [
+                'Home'  => 'Home',
+                'Farm'  => 'Farm',
+                'Shop'  => 'Shop',
+                'Other' => 'Other',
+            ];
+            $presetName  = $presetByType[$request->account_type ?? 'Home'] ?? 'Other';
+            $ownerPreset = $presets[$presetName];
+
             $routes  = $ownerPreset['routes']  === '*' ? $allRoutes  : $ownerPreset['routes'];
             $actions = $ownerPreset['actions'] === '*' ? $allActions : $ownerPreset['actions'];
 
+            // Pass arrays raw — the AccountUser model has 'array' casts on
+            // route_access / action_access, so Eloquent json_encodes them once
+            // on save. Calling json_encode() here too would double-encode and
+            // the frontend would read the value back as a JSON string instead
+            // of an array, denying every route in the router guard.
             AccountUser::create([
                 'account_id'    => $account->id,
                 'user_id'       => $user->id,
-                'route_access'  => json_encode($routes),
-                'action_access' => json_encode($actions),
+                'route_access'  => $routes,
+                'action_access' => $actions,
                 'is_owner'      => true,
             ]);
 

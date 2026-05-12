@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('farm_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('farm_id')->constrained('farm_farms')->cascadeOnDelete();
 
             $table->string('name');
             $table->string('unit'); // kg, bag, ml, dose

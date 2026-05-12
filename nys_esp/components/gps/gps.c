@@ -161,6 +161,51 @@ static bool nmea_parse_gga(char *line, gps_fix_t *out)
     return true;
 }
 
+// GSV Parser – satellites in view (debug only)
+// Returns the "satellites in view" count from the message, or -1 if not GSV.
+// GSV format: $XXGSV,<#msgs>,<msg#>,<sats_in_view>,<sat info...>*CS
+// Also captures the highest SNR seen across the visible birds — that's the
+// single most useful "is the antenna working" signal. SNR>30 indoors is good,
+// 20–30 is marginal, <20 will likely never lock.
+static int nmea_parse_gsv(char *line, int *best_snr_out)
+{
+    if (!line) return -1;
+    // Match GPGSV / GLGSV / GAGSV / BDGSV / GBGSV / GNGSV (constellation prefix varies)
+    if (strlen(line) < 7) return -1;
+    if (line[0] != '$' || line[3] != 'G' || line[4] != 'S' || line[5] != 'V' || line[6] != ',') return -1;
+    if (!nmea_checksum_ok(line)) return -1;
+
+    // Make a working copy because strtok_r mutates.
+    char work[128];
+    strncpy(work, line, sizeof(work) - 1);
+    work[sizeof(work) - 1] = 0;
+
+    char *save = NULL;
+    strtok_r(work, ",", &save);                 // $XXGSV
+    (void)strtok_r(NULL, ",", &save);           // total msgs
+    (void)strtok_r(NULL, ",", &save);           // this msg #
+    const char *inview_s = strtok_r(NULL, ",", &save);
+    int inview = (inview_s && inview_s[0]) ? atoi(inview_s) : 0;
+
+    // Each sat block = 4 fields: id, elevation, azimuth, snr.
+    // Walk them and track the max snr we've seen.
+    if (best_snr_out) {
+        int best = *best_snr_out;
+        for (int i = 0; i < 4; i++) {
+            (void)strtok_r(NULL, ",", &save);   // id
+            (void)strtok_r(NULL, ",", &save);   // elev
+            (void)strtok_r(NULL, ",", &save);   // azim
+            const char *snr_s = strtok_r(NULL, ",", &save);
+            if (!snr_s || !snr_s[0]) continue;
+            // SNR field may have a *checksum tail on the last sat — strtol ignores it.
+            int snr = atoi(snr_s);
+            if (snr > best) best = snr;
+        }
+        *best_snr_out = best;
+    }
+    return inview;
+}
+
 // RMC Parser – Date + Time
 static bool nmea_parse_rmc(char *line, int64_t *epoch_out)
 {
@@ -308,8 +353,21 @@ bool gps_try_get_fix(int timeout_s)
 
     ESP_LOGI(TAG, "GPS: waiting for fix (timeout %ds)...", timeout_s);
 
+    // Same debug counters as the duty-cycle task.
+    uint32_t total_bytes  = 0;
+    uint32_t total_lines  = 0;
+    uint32_t bad_checksum = 0;
+    uint32_t gga_seen     = 0;
+    uint32_t gga_with_fix = 0;
+    int      last_fixq    = -1;
+    int      last_sats    = -1;
+    int      sats_in_view = 0;
+    int      best_snr     = 0;
+    int64_t  last_summary_us = esp_timer_get_time();
+
     while (!got_fix) {
-        int64_t elapsed_us = esp_timer_get_time() - start_us;
+        int64_t now_us     = esp_timer_get_time();
+        int64_t elapsed_us = now_us - start_us;
         if (elapsed_us >= timeout_us) {
             ESP_LOGW(TAG, "GPS fix timeout after %ds", timeout_s);
             break;
@@ -318,14 +376,26 @@ bool gps_try_get_fix(int timeout_s)
         // LED: slow flash while searching
         static int64_t last_toggle = 0;
         static bool led_on = false;
-        if ((esp_timer_get_time() - last_toggle) >= 1000000LL) {
+        if ((now_us - last_toggle) >= 1000000LL) {
             led_on = !led_on;
             gpio_set_level(LED_GPIO, led_on ? LED_ON : LED_OFF);
-            last_toggle = esp_timer_get_time();
+            last_toggle = now_us;
+        }
+
+        // Periodic summary every 5s.
+        if ((now_us - last_summary_us) >= 5000000LL) {
+            ESP_LOGI(TAG,
+                     "[t=%llds] bytes=%u lines=%u badcs=%u gga=%u(fix=%u) lastfixq=%d lastsats=%d view=%d snr_max=%d",
+                     (long long)(elapsed_us / 1000000LL),
+                     (unsigned)total_bytes, (unsigned)total_lines,
+                     (unsigned)bad_checksum, (unsigned)gga_seen, (unsigned)gga_with_fix,
+                     last_fixq, last_sats, sats_in_view, best_snr);
+            last_summary_us = now_us;
         }
 
         int len = uart_read_bytes(GPS_UART, buf, 512, pdMS_TO_TICKS(250));
         if (len <= 0) continue;
+        total_bytes += (uint32_t)len;
 
         for (int i = 0; i < len; i++) {
             uint8_t c = buf[i];
@@ -333,23 +403,47 @@ bool gps_try_get_fix(int timeout_s)
             if (c == '\n') {
                 if (line_len == 0) continue;
                 line[line_len] = 0;
+                total_lines++;
+                ESP_LOGD(TAG, "NMEA: %.100s", line);
+
+                if (line[0] == '$' && !nmea_checksum_ok(line)) bad_checksum++;
+
+                {
+                    char work[128];
+                    strncpy(work, line, sizeof(work) - 1);
+                    work[sizeof(work) - 1] = 0;
+                    int inview = nmea_parse_gsv(work, &best_snr);
+                    if (inview > sats_in_view) sats_in_view = inview;
+                }
 
                 char work[128];
                 strncpy(work, line, sizeof(work) - 1);
                 work[sizeof(work) - 1] = 0;
 
-                if (nmea_parse_gga(work, &fix) && fix.has_fix) {
-                    s_last_fix         = fix;
-                    s_last_fix_valid   = true;
-                    s_last_fix_time_us = esp_timer_get_time();
-                    got_fix            = true;
+                bool was_gga = (strncmp(work, "$GPGGA,", 7) == 0 || strncmp(work, "$GNGGA,", 7) == 0);
+                if (nmea_parse_gga(work, &fix)) {
+                    gga_seen++;
+                    last_fixq = fix.fix_quality;
+                    last_sats = fix.sats_used;
+                    if (fix.has_fix) {
+                        gga_with_fix++;
+                        s_last_fix         = fix;
+                        s_last_fix_valid   = true;
+                        s_last_fix_time_us = esp_timer_get_time();
+                        got_fix            = true;
 
-                    gps_nvs_save_last_fix(&fix);
-                    s_last_fix_nvs_save_us = s_last_fix_time_us;
+                        gps_nvs_save_last_fix(&fix);
+                        s_last_fix_nvs_save_us = s_last_fix_time_us;
 
-                    ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
-                             fix.lat_deg, fix.lon_deg, fix.sats_used,
-                             gps_fixq_to_str(fix.fix_quality));
+                        ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
+                                 fix.lat_deg, fix.lon_deg, fix.sats_used,
+                                 gps_fixq_to_str(fix.fix_quality));
+                    } else {
+                        ESP_LOGI(TAG, "GGA no-fix: fixq=%d sats=%d",
+                                 fix.fix_quality, fix.sats_used);
+                    }
+                } else if (was_gga) {
+                    ESP_LOGW(TAG, "GGA parse failed (bad checksum?)");
                 }
 
                 // Extract time from RMC
@@ -372,6 +466,12 @@ bool gps_try_get_fix(int timeout_s)
             else line_len = 0;
         }
     }
+
+    ESP_LOGI(TAG,
+             "GPS try done: got_fix=%d bytes=%u lines=%u badcs=%u gga=%u(fix=%u) view=%d snr_max=%d",
+             got_fix, (unsigned)total_bytes, (unsigned)total_lines,
+             (unsigned)bad_checksum, (unsigned)gga_seen, (unsigned)gga_with_fix,
+             sats_in_view, best_snr);
 
     gpio_set_level(LED_GPIO, LED_OFF);
     free(buf);
@@ -404,22 +504,57 @@ static void gps_duty_cycle_task(void *arg)
         int64_t last_led_toggle_us = 0;
         bool    led_state          = false;
 
+        // ── Debug counters (reset each acquisition cycle) ─────────────────
+        // total_bytes:    raw bytes received over UART. 0 = wiring/UART issue.
+        // total_lines:    NMEA lines parsed. 0 with bytes>0 = baud/garbage.
+        // bad_checksum:   lines that failed checksum. High = noise / wrong baud.
+        // gga_seen:       how many GGA sentences arrived (any quality).
+        // gga_with_fix:   how many had fix_quality>0 (i.e. we COULD have locked).
+        // last_fixq/sats: most recent GGA's reported fix quality + sats.
+        // sats_in_view:   max "satellites in view" from any GSV — antenna sees N.
+        // best_snr:       best SNR across all GSV — antenna signal strength.
+        uint32_t total_bytes  = 0;
+        uint32_t total_lines  = 0;
+        uint32_t bad_checksum = 0;
+        uint32_t gga_seen     = 0;
+        uint32_t gga_with_fix = 0;
+        int      last_fixq    = -1;
+        int      last_sats    = -1;
+        int      sats_in_view = 0;
+        int      best_snr     = 0;
+        int64_t  last_summary_us = esp_timer_get_time();
+
         while (!got_fix) {
-            int64_t elapsed_us = esp_timer_get_time() - start_us;
+            int64_t now_us     = esp_timer_get_time();
+            int64_t elapsed_us = now_us - start_us;
             if (elapsed_us >= timeout_us) {
                 ESP_LOGW(TAG, "GPS fix timeout after %ds", GPS_FIX_TIMEOUT_S);
                 break;
             }
 
             // LED: flash once every 2 seconds (1s on, 1s off) while searching
-            if ((esp_timer_get_time() - last_led_toggle_us) >= 1000000LL) {
+            if ((now_us - last_led_toggle_us) >= 1000000LL) {
                 led_state = !led_state;
                 gpio_set_level(LED_GPIO, led_state ? LED_ON : LED_OFF);
-                last_led_toggle_us = esp_timer_get_time();
+                last_led_toggle_us = now_us;
+            }
+
+            // Periodic summary every 5s — tells you at a glance whether
+            // the GPS is alive, whether the antenna sees birds, and why
+            // we don't yet have a fix.
+            if ((now_us - last_summary_us) >= 5000000LL) {
+                ESP_LOGI(TAG,
+                         "[t=%llds] bytes=%u lines=%u badcs=%u gga=%u(fix=%u) lastfixq=%d lastsats=%d view=%d snr_max=%d",
+                         (long long)(elapsed_us / 1000000LL),
+                         (unsigned)total_bytes, (unsigned)total_lines,
+                         (unsigned)bad_checksum, (unsigned)gga_seen, (unsigned)gga_with_fix,
+                         last_fixq, last_sats, sats_in_view, best_snr);
+                last_summary_us = now_us;
             }
 
             int len = uart_read_bytes(GPS_UART, buf, 512, pdMS_TO_TICKS(250));
             if (len <= 0) continue;
+            total_bytes += (uint32_t)len;
 
             for (int i = 0; i < len; i++) {
                 uint8_t c = buf[i];
@@ -427,23 +562,59 @@ static void gps_duty_cycle_task(void *arg)
                 if (c == '\n') {
                     if (line_len == 0) continue;
                     line[line_len] = 0;
+                    total_lines++;
+
+                    // Print every NMEA sentence as DEBUG so you can see what
+                    // the receiver is actually outputting. Truncated to 100
+                    // chars so the log stays usable.
+                    ESP_LOGD(TAG, "NMEA: %.100s", line);
+
+                    // Track checksum failures separately — high counts mean
+                    // wrong UART baud or electrical noise on the line.
+                    if (line[0] == '$' && !nmea_checksum_ok(line)) {
+                        bad_checksum++;
+                    }
+
+                    // GSV: how many sats the antenna SEES (separate from used-in-fix).
+                    {
+                        char work[128];
+                        strncpy(work, line, sizeof(work) - 1);
+                        work[sizeof(work) - 1] = 0;
+                        int inview = nmea_parse_gsv(work, &best_snr);
+                        if (inview > sats_in_view) sats_in_view = inview;
+                    }
 
                     char work[128];
                     strncpy(work, line, sizeof(work) - 1);
                     work[sizeof(work) - 1] = 0;
 
-                    if (nmea_parse_gga(work, &fix) && fix.has_fix) {
-                        s_last_fix         = fix;
-                        s_last_fix_valid   = true;
-                        s_last_fix_time_us = esp_timer_get_time();
-                        got_fix            = true;
+                    bool was_gga = (strncmp(work, "$GPGGA,", 7) == 0 || strncmp(work, "$GNGGA,", 7) == 0);
+                    if (nmea_parse_gga(work, &fix)) {
+                        gga_seen++;
+                        last_fixq = fix.fix_quality;
+                        last_sats = fix.sats_used;
+                        if (fix.has_fix) {
+                            gga_with_fix++;
+                            s_last_fix         = fix;
+                            s_last_fix_valid   = true;
+                            s_last_fix_time_us = esp_timer_get_time();
+                            got_fix            = true;
 
-                        gps_nvs_save_last_fix(&fix);
-                        s_last_fix_nvs_save_us = s_last_fix_time_us;
+                            gps_nvs_save_last_fix(&fix);
+                            s_last_fix_nvs_save_us = s_last_fix_time_us;
 
-                        ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
-                                 fix.lat_deg, fix.lon_deg, fix.sats_used,
-                                 gps_fixq_to_str(fix.fix_quality));
+                            ESP_LOGI(TAG, "FIX: %.6f,%.6f sats=%d fixq=%s",
+                                     fix.lat_deg, fix.lon_deg, fix.sats_used,
+                                     gps_fixq_to_str(fix.fix_quality));
+                        } else {
+                            // No-fix GGA still tells us a lot: the receiver
+                            // is alive and tracking, just can't lock yet.
+                            ESP_LOGI(TAG, "GGA no-fix: fixq=%d sats=%d",
+                                     fix.fix_quality, fix.sats_used);
+                        }
+                    } else if (was_gga) {
+                        // GGA sentence arrived but failed checksum or parse.
+                        ESP_LOGW(TAG, "GGA parse failed (bad checksum?)");
                     }
 
                     // Also try to extract time from RMC
@@ -466,6 +637,13 @@ static void gps_duty_cycle_task(void *arg)
                 else line_len = 0;
             }
         }
+
+        // Final summary — useful even on timeout, especially on timeout.
+        ESP_LOGI(TAG,
+                 "GPS cycle done: got_fix=%d bytes=%u lines=%u badcs=%u gga=%u(fix=%u) view=%d snr_max=%d",
+                 got_fix, (unsigned)total_bytes, (unsigned)total_lines,
+                 (unsigned)bad_checksum, (unsigned)gga_seen, (unsigned)gga_with_fix,
+                 sats_in_view, best_snr);
 
         // LED off after search phase
         gpio_set_level(LED_GPIO, LED_OFF);

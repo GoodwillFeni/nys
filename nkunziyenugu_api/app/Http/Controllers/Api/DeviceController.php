@@ -13,7 +13,9 @@ class DeviceController extends Controller
     {
         $user = $request->user();
         $activeAccountId = $request->header('X-Account-ID');
-        $query = Device::query()->with('account');
+        // Eager-load latestHeartbeat so the UI can render firmware/balance
+        // columns without per-row queries (Section E).
+        $query = Device::query()->with(['account', 'latestHeartbeat']);
 
         // Data scoping: super admin sees all; regular users see only devices
         // in the active account (permission already checked by middleware).
@@ -36,9 +38,38 @@ class DeviceController extends Controller
 
         $query->orderBy($sortBy, $order);
 
+        // Optional dashboard-driven filters. Card on the Device Dashboard
+        // links here with ?filter=outdated_firmware / low_balance / not_reporting.
+        $devices = $query->get();
+        $filter = $request->query('filter');
+        if ($filter) {
+            $latestFw      = config('devices.latest_firmware');
+            $lowBalanceR   = config('devices.low_balance_threshold');
+            $staleHours    = config('devices.stale_report_hours');
+            $devices = $devices->filter(function ($d) use ($filter, $latestFw, $lowBalanceR, $staleHours) {
+                $hb = $d->latestHeartbeat;
+                switch ($filter) {
+                    case 'outdated_firmware':
+                        $fw = $hb?->payload['firmware_version'] ?? null;
+                        return $fw !== null && $fw !== $latestFw;
+                    case 'low_balance':
+                        $bal = $hb?->payload['balance'] ?? null;
+                        if ($bal === null) return false;
+                        // Strip currency prefix / spaces. "R12.34" → 12.34
+                        $num = (float) preg_replace('/[^0-9.\-]/', '', (string) $bal);
+                        return $num < $lowBalanceR;
+                    case 'not_reporting':
+                        return !$d->last_seen_at || $d->last_seen_at->lt(now()->subHours($staleHours));
+                    default:
+                        return true;
+                }
+            })->values();
+        }
+
         return response()->json([
             'status' => 'success',
-            'data' => $query->get()->map(function ($device) {
+            'data' => $devices->map(function ($device) {
+                $hb = $device->latestHeartbeat;
                 return [
                     'id' => $device->id,
                     'name' => $device->name,
@@ -50,10 +81,102 @@ class DeviceController extends Controller
                         'name' => $device->account->name,
                     ] : null,
                     'account_name' => $device->account ? $device->account->name : null,
+                    'latest_heartbeat' => $hb ? [
+                        'firmware_version' => $hb->payload['firmware_version'] ?? null,
+                        'balance'          => $hb->payload['balance'] ?? null,
+                        'balance_ts'       => $hb->payload['balance_ts'] ?? null,
+                        'uptime_s'         => $hb->payload['uptime_s'] ?? null,
+                        'created_at'       => $hb->created_at,
+                    ] : null,
                     'created_at' => $device->created_at,
                     'updated_at' => $device->updated_at,
                 ];
             })
+        ]);
+    }
+
+    /**
+     * Device Dashboard summary: counters for outdated firmware, low balance,
+     * and devices not reporting, plus the 5 most recent messages from any
+     * device in the active account. One endpoint = one query path for the
+     * dashboard cards + activity strip.
+     */
+    public function dashboard(Request $request)
+    {
+        $user = $request->user();
+        $activeAccountId = (int) $request->header('X-Account-ID');
+
+        // Scope: super admin sees all, regular users see active account only.
+        $deviceQuery = Device::query()->with('latestHeartbeat');
+        if (!$user->is_super_admin) {
+            $deviceQuery->where('account_id', $activeAccountId);
+        }
+        $devices = $deviceQuery->get();
+
+        $latestFw    = config('devices.latest_firmware');
+        $lowBalanceR = config('devices.low_balance_threshold');
+        $staleHours  = config('devices.stale_report_hours');
+        $staleCutoff = now()->subHours($staleHours);
+
+        $totals = [
+            'all'                => $devices->count(),
+            'outdated_firmware'  => 0,
+            'low_balance'        => 0,
+            'not_reporting'      => 0,
+        ];
+        foreach ($devices as $d) {
+            $hb = $d->latestHeartbeat;
+            if ($hb) {
+                $fw = $hb->payload['firmware_version'] ?? null;
+                if ($fw !== null && $fw !== $latestFw) $totals['outdated_firmware']++;
+                $bal = $hb->payload['balance'] ?? null;
+                if ($bal !== null) {
+                    $num = (float) preg_replace('/[^0-9.\-]/', '', (string) $bal);
+                    if ($num < $lowBalanceR) $totals['low_balance']++;
+                }
+            }
+            if (!$d->last_seen_at || $d->last_seen_at->lt($staleCutoff)) {
+                $totals['not_reporting']++;
+            }
+        }
+
+        // Recent activity — latest 5 messages from any device in the account.
+        $recentQuery = \App\Models\DeviceMessage::query()
+            ->with('device:id,name,account_id')
+            ->latest('created_at')
+            ->limit(5);
+        if (!$user->is_super_admin) {
+            $recentQuery->whereHas('device', fn ($q) => $q->where('account_id', $activeAccountId));
+        }
+        $recent = $recentQuery->get()->map(function ($msg) {
+            $payload = $msg->payload ?? [];
+            $summary = match ($msg->type) {
+                'heartbeat' => 'FW ' . ($payload['firmware_version'] ?? '?')
+                             . (isset($payload['balance']) ? ', ' . $payload['balance'] : ''),
+                'location'  => isset($msg->lat, $msg->lng) ? sprintf('%.4f, %.4f', $msg->lat, $msg->lng) : 'location',
+                'sensor'    => 'sensor change',
+                default     => (string) $msg->type,
+            };
+            return [
+                'device_id'   => $msg->device?->id,
+                'device_name' => $msg->device?->name,
+                'type'        => $msg->type,
+                'summary'     => $summary,
+                'timestamp'   => $msg->created_at?->toIso8601String(),
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'totals'          => $totals,
+                'recent_activity' => $recent,
+                'thresholds'      => [
+                    'latest_firmware'       => $latestFw,
+                    'low_balance_threshold' => $lowBalanceR,
+                    'stale_report_hours'    => $staleHours,
+                ],
+            ],
         ]);
     }
 

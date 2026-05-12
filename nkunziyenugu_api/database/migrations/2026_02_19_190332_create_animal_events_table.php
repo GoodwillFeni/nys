@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('account_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('farm_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('animal_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('farm_id')->constrained('farm_farms')->cascadeOnDelete();
+            $table->foreignId('animal_id')->constrained('farm_animals')->cascadeOnDelete();
 
             $table->string('event_type');
             $table->date('event_date');
